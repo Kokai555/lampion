@@ -4,17 +4,21 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject var panel: Panel
     @EnvironmentObject var updater: Updater
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Notices slide in from the top; with Reduce Motion on they simply appear.
+    private var noticeTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
-            if updater.state != .idle && updater.state != .checking {
-                UpdateBanner()
-                Divider()
+            if updater.state != .idle {
+                UpdateCard().transition(noticeTransition)
             }
             if panel.setupState != .ready {
-                SetupBanner()
-                Divider()
+                SetupBanner().transition(noticeTransition)
             }
             ModuleTable()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -42,13 +46,14 @@ struct ContentView: View {
                     .help("Stop every running server")
             }
         }
-        .alert("Software Update", isPresented: Binding(get: { updater.notice != nil }, set: { if !$0 { updater.notice = nil } })) {
-            Button("OK") {}
-        } message: { Text(updater.notice ?? "") }
+        .animation(reduceMotion ? nil : .spring(duration: 0.35), value: updater.state != .idle)
+        .animation(reduceMotion ? nil : .spring(duration: 0.35), value: panel.setupState != .ready)
         .onAppear {
             let args = CommandLine.arguments
             // Look for a newer release once per launch (not while a self-test is running).
-            if args.contains("--auto-update") {
+            if let i = args.firstIndex(of: "--preview-update"), i + 1 < args.count {
+                updater.preview(args[i + 1])
+            } else if args.contains("--auto-update") {
                 updater.check(userInitiated: false) { if case .available(let r) = updater.state { updater.install(r) } }
             } else if !args.contains("--selftest") && !args.contains("--dbtest") {
                 updater.check(userInitiated: false)

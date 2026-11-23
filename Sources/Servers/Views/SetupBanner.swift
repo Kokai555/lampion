@@ -6,12 +6,12 @@ struct SetupBanner: View {
     @EnvironmentObject var panel: Panel
 
     var body: some View {
-        HStack(spacing: 12) {
+        NoticeCard {
             switch panel.setupState {
             case .ready:
                 EmptyView()
             case .running:
-                ProgressView().controlSize(.small)
+                ProgressView().controlSize(.small).frame(width: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Downloading and setting up Apache, PHP and MariaDB…").fontWeight(.semibold)
                     Text("Progress appears in the log below. This can take several minutes; the servers start when it finishes.")
@@ -41,11 +41,9 @@ struct SetupBanner: View {
                 Button(missing.isEmpty ? "Set Up" : "Try Again") { panel.runSetup() }.buttonStyle(.borderedProminent)
             }
         }
-        .padding(.horizontal, 20).padding(.vertical, 12)
-        .background(Color.orange.opacity(0.12))
     }
 
     private var icon: some View {
-        Image(systemName: "shippingbox").font(.system(size: 22)).foregroundStyle(.orange)
+        Image(systemName: "shippingbox").font(.system(size: 26)).foregroundStyle(.orange).frame(width: 40)
     }
 }

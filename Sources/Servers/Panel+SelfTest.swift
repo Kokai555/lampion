@@ -45,7 +45,7 @@ extension Panel {
                 {"tag_name":"v9.9","html_url":"https://example.com/r","assets":[{"name":"notes.txt","browser_download_url":"https://example.com/n"},
                 {"name":"Szerverpanel-9.9.dmg","browser_download_url":"https://example.com/a.dmg","digest":"sha256:abc123"}]}
                 """.utf8)
-            check(Updater.parseRelease(sample) == Updater.Release(version: "9.9", page: "https://example.com/r", dmgURL: "https://example.com/a.dmg", sha256: "abc123")
+            check(Updater.parseRelease(sample) == Updater.Release(version: "9.9", page: "https://example.com/r", dmgURL: "https://example.com/a.dmg", sha256: "abc123", notes: "")
                   && Updater.parseRelease(Data("{}".utf8)) == nil, "Updater reads the release and its disk image from GitHub's answer")
             let pma = Setup.configuredPhpMyAdmin("$cfg['blowfish_secret'] = '';")
             check(pma.range(of: "sodium_hex2bin\\('[0-9a-f]{64}'\\)", options: .regularExpression) != nil, "Setup generates a 32-byte phpMyAdmin secret")

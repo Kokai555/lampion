@@ -13,6 +13,7 @@ struct AppCommands: Commands {
         CommandGroup(after: .appInfo) {
             Button("Check for Updates…") { updater.check(userInitiated: true) }
                 .disabled(updater.state == .checking)
+                .keyboardShortcut("u", modifiers: .command)
         }
 
         CommandMenu("Server") {
