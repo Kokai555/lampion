@@ -6,6 +6,19 @@ struct UpdateCard: View {
     @EnvironmentObject var updater: Updater
     @State private var showingNotes = false
 
+    /// Which kind of notice is showing. The card animates when this changes, not on every download progress tick.
+    private var phase: Int {
+        switch updater.state {
+        case .idle: return 0
+        case .checking: return 1
+        case .upToDate: return 2
+        case .available: return 3
+        case .downloading: return 4
+        case .installing: return 5
+        case .failed: return 6
+        }
+    }
+
     var body: some View {
         card.onAppear {
             // `--preview-update notes` opens the release notes straight away.
@@ -17,62 +30,75 @@ struct UpdateCard: View {
 
     private var card: some View {
         NoticeCard {
-            switch updater.state {
-            case .idle:
-                EmptyView()
-
-            case .checking:
-                ProgressView().controlSize(.small).frame(width: 40)
-                NoticeText(title: "Checking for updates…")
-                Spacer()
-
-            case .upToDate:
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 28)).foregroundStyle(.green).frame(width: 40)
-                NoticeText(title: "Lampion is up to date", detail: "Version \(updater.currentVersion) is the latest.")
-                Spacer()
-
-            case .available(let release):
-                appIcon
-                NoticeText(title: "Lampion \(release.version) is available",
-                           detail: "Version \(updater.currentVersion) is installed. Updating takes a few seconds and the servers keep running.")
-                Spacer(minLength: 12)
-                Button("Later") { updater.later() }
-                    .help("Hide this until the next time Lampion opens")
-                Button("What’s New") { showingNotes = true }
-                    .popover(isPresented: $showingNotes, arrowEdge: .bottom) { ReleaseNotes(release: release, isPresented: $showingNotes) }
-                Button("Update Now") { updater.install(release) }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-
-            case .downloading(let release, let fraction):
-                appIcon
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Downloading Lampion \(release.version)").font(.headline)
-                    ProgressView(value: fraction).progressViewStyle(.linear).frame(maxWidth: 360)
-                        .accessibilityLabel("Download progress")
-                }
-                Text("\(Int((fraction * 100).rounded()))%").font(.callout).monospacedDigit().foregroundStyle(.secondary)
-                    .frame(width: 44, alignment: .trailing)
-                Spacer(minLength: 12)
-                Button("Cancel") { updater.cancelDownload() }
-
-            case .installing(let release):
-                appIcon
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Installing Lampion \(release.version)").font(.headline)
-                    ProgressView().progressViewStyle(.linear).frame(maxWidth: 360)
-                }
-                Text("Lampion reopens in a moment.").font(.callout).foregroundStyle(.secondary)
-                Spacer()
-
-            case .failed(let message):
-                Image(systemName: "exclamationmark.circle").font(.system(size: 28)).foregroundStyle(.secondary).frame(width: 40)
-                NoticeText(title: "The update could not be installed", detail: message)
-                Spacer(minLength: 12)
-                Button("Dismiss") { updater.later() }
-                Button("Download Manually") { Shell.open([Updater.releasesPage]) }
-                Button("Try Again") { updater.check(userInitiated: true) }
-            }
+            content
         }
+        .animation(Motion.fade, value: phase)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch updater.state {
+        case .idle:
+            EmptyView()
+
+        case .checking:
+            ProgressView().controlSize(.small).frame(width: 40)
+            NoticeText(title: "Checking for updates…")
+            Spacer()
+
+        case .upToDate:
+            noticeIcon("checkmark.circle.fill", .green)
+            NoticeText(title: "Lampion is up to date", detail: "Version \(updater.currentVersion) is the latest.")
+            Spacer()
+
+        case .available(let release):
+            appIcon
+            NoticeText(title: "Lampion \(release.version) is available",
+                       detail: "Version \(updater.currentVersion) is installed. Updating takes a few seconds and the servers keep running.")
+            Spacer(minLength: 12)
+            Button("Later") { updater.later() }
+                .help("Hide this until the next time Lampion opens")
+            Button("What’s New") { showingNotes = true }
+                .popover(isPresented: $showingNotes, arrowEdge: .bottom) { ReleaseNotes(release: release, isPresented: $showingNotes) }
+            Button("Update Now") { updater.install(release) }
+                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+
+        case .downloading(let release, let fraction):
+            appIcon
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Downloading Lampion \(release.version)").font(.headline)
+                ProgressView(value: fraction).progressViewStyle(.linear).frame(maxWidth: 360)
+                    .accessibilityLabel("Download progress")
+            }
+            Text("\(Int((fraction * 100).rounded()))%").font(.callout).monospacedDigit().foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
+            Spacer(minLength: 12)
+            Button("Cancel") { updater.cancelDownload() }
+
+        case .installing(let release):
+            appIcon
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Installing Lampion \(release.version)").font(.headline)
+                ProgressView().progressViewStyle(.linear).frame(maxWidth: 360)
+            }
+            Text("Lampion reopens in a moment.").font(.callout).foregroundStyle(.secondary)
+            Spacer()
+
+        case .failed(let message):
+            noticeIcon("exclamationmark.triangle.fill", .orange)
+            NoticeText(title: "The update could not be installed", detail: message)
+            Spacer(minLength: 12)
+            Button("Dismiss") { updater.later() }
+            Button("Download Manually") { Shell.open([Updater.releasesPage]) }
+            Button("Try Again") { updater.check(userInitiated: true) }
+        }
+    }
+
+    private func noticeIcon(_ symbol: String, _ color: Color) -> some View {
+        Image(systemName: symbol)
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 28)).foregroundStyle(color).frame(width: 40)
+            .accessibilityHidden(true)
     }
 
     private var appIcon: some View {

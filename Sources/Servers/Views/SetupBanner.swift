@@ -19,7 +19,7 @@ struct SetupBanner: View {
                 }
                 Spacer()
             case .needsHomebrew:
-                icon
+                icon("mug.fill")
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Homebrew is required").fontWeight(.semibold)
                     Text("Lampion installs Apache, PHP and MariaDB with Homebrew. Finish Homebrew's installer in the Terminal window (it asks for your password); the download continues here by itself.")
@@ -28,7 +28,7 @@ struct SetupBanner: View {
                 Spacer()
                 Button("Open Installer Again") { panel.installHomebrew() }
             case .needsPackages(let missing):
-                icon
+                icon(missing.isEmpty ? "wrench.and.screwdriver.fill" : "shippingbox.fill")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(missing.isEmpty ? "Apache is not configured for PHP yet" : "Server software is not installed yet")
                         .fontWeight(.semibold)
@@ -41,9 +41,14 @@ struct SetupBanner: View {
                 Button(missing.isEmpty ? "Set Up" : "Try Again") { panel.runSetup() }.buttonStyle(.borderedProminent)
             }
         }
+        .animation(Motion.fade, value: panel.setupState)
     }
 
-    private var icon: some View {
-        Image(systemName: "shippingbox").font(.system(size: 26)).foregroundStyle(.orange).frame(width: 40)
+    /// Homebrew's mug, packages to download, or configuration to fix; the same size as the update notice's icons.
+    private func icon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 28)).foregroundStyle(.orange).frame(width: 40)
+            .accessibilityHidden(true)
     }
 }

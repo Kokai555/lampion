@@ -1,6 +1,12 @@
 import SwiftUI
 import AppKit
 
+/// The fast-changing part of the database manager state (see `DBModel.activity`).
+final class DBActivity: ObservableObject {
+    @Published var sqlLog: [SQLLogLine] = []
+    @Published var busyCount = 0
+}
+
 final class DBModel: ObservableObject {
     static let pageSize = 500
 
@@ -10,8 +16,17 @@ final class DBModel: ObservableObject {
     @Published var selection: Node?
     @Published var tab: DBTab = .query
     @Published var connectionError: String?
-    @Published var sqlLog: [SQLLogLine] = []
-    @Published var busyCount = 0
+    /// Statement log and busy counter. They change on every statement, so they publish through their own
+    /// object: observing them must not re-render every view that observes the model (three times per query).
+    let activity = DBActivity()
+    var sqlLog: [SQLLogLine] {
+        get { activity.sqlLog }
+        set { activity.sqlLog = newValue }
+    }
+    var busyCount: Int {
+        get { activity.busyCount }
+        set { activity.busyCount = newValue }
+    }
     @Published var sheet: DBSheet?
     @Published var alertMessage: String?
     @Published var confirm: ConfirmRequest?
@@ -44,12 +59,38 @@ final class DBModel: ObservableObject {
     @Published var queryError: String?
     @Published var shownResult = 0
 
+    // Window layout (redesign)
+    /// The row inspector beside the data grid.
+    @Published var showInspector = UserDefaults.standard.bool(forKey: "db.showInspector") {
+        didSet { UserDefaults.standard.set(showInspector, forKey: "db.showInspector") }
+    }
+    /// The SQL console at the bottom of the window: collapsed to one line, or open.
+    @Published var consoleExpanded = false
+    /// Show information_schema, mysql, performance_schema and sys in the sidebar.
+    @Published var showSystemDatabases = UserDefaults.standard.bool(forKey: "db.showSystemDatabases") {
+        didSet { UserDefaults.standard.set(showSystemDatabases, forKey: "db.showSystemDatabases") }
+    }
+    /// Recently run queries, newest first (at most 30), kept between launches.
+    @Published var queryHistory: [String] = UserDefaults.standard.stringArray(forKey: "db.queryHistory") ?? [] {
+        didSet { UserDefaults.standard.set(queryHistory, forKey: "db.queryHistory") }
+    }
+    /// "MariaDB 13.0.2", filled in by `reloadAll`.
+    @Published var serverVersion = ""
+    /// Database the Query tab runs in when the user picks one; nil follows the sidebar selection.
+    @Published var queryDatabase: String?
+
     /// Kiegészítéshez: adatbázis → tábla → oszlopnevek.
     var completionColumns: [String: [String: [String]]] = [:]
 
     private let queue = DispatchQueue(label: "lampion.db")
 
-    init() { signal(SIGPIPE, SIG_IGN) }
+    /// The app's database manager model (used by the snapshot tool).
+    static weak var shared: DBModel?
+
+    init() {
+        signal(SIGPIPE, SIG_IGN)
+        DBModel.shared = self
+    }
 
     var currentDB: String? {
         switch selection {
@@ -77,7 +118,7 @@ final class DBModel: ObservableObject {
     var availableTabs: [DBTab] {
         switch selection {
         case nil: return [.query]
-        case .database: return [.tables, .query]
+        case .database: return [.tables, .designer, .query]
         case .table: return [.data, .structure, .query]
         }
     }
@@ -85,8 +126,10 @@ final class DBModel: ObservableObject {
     // Napló és futtatás
     func log(_ text: String, error: Bool = false) {
         let flat = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
-        sqlLog.append(SQLLogLine(text: flat.count > 600 ? String(flat.prefix(600)) + "…" : flat, isError: error))
-        if sqlLog.count > 300 { sqlLog.removeFirst(sqlLog.count - 300) }
+        var lines = sqlLog   // one publish per line, also when the oldest is dropped
+        lines.append(SQLLogLine(text: flat.count > 600 ? String(flat.prefix(600)) + "…" : flat, isError: error))
+        if lines.count > 300 { lines.removeFirst(lines.count - 300) }
+        sqlLog = lines
     }
 
     func exec(_ sql: String, db: String? = nil, quiet: Bool = false, done: @escaping (ExecResult) -> Void) {
@@ -112,6 +155,13 @@ final class DBModel: ObservableObject {
 
     // Fa
     func reloadAll() {
+        if serverVersion.isEmpty {
+            exec("SELECT VERSION()", quiet: true) { r in
+                if let v = r.sets.first?.rows.first?.first ?? nil {
+                    self.serverVersion = "MariaDB " + (v.components(separatedBy: "-").first ?? v)
+                }
+            }
+        }
         exec("SHOW DATABASES", quiet: true) { r in
             if let e = r.error {
                 self.connectionError = e
@@ -154,7 +204,7 @@ final class DBModel: ObservableObject {
         case nil:
             tab = .query
         case .database(let d):
-            if tab != .query { tab = .tables }
+            if tab != .query && tab != .designer { tab = .tables }
             loadTables(d)
         case .table(let d, _):
             // Stay on Structure or Query when moving between tables; otherwise show the data.
@@ -231,10 +281,33 @@ final class DBModel: ObservableObject {
         return SQL.val(value)
     }
 
-    private func rowCondition(_ row: Int) -> String {
+    /// Columns that identify a row: the primary key, else a unique NOT NULL column, else every column.
+    var rowKeyColumns: [String] {
         let pk = columns.filter { $0.key == "PRI" }.map(\.name)
-        let keys = pk.isEmpty ? data.columns : pk
-        return keys.compactMap { k -> String? in
+        if !pk.isEmpty { return pk }
+        if let unique = columns.first(where: { $0.key == "UNI" && $0.null.uppercased() != "YES" }) { return [unique.name] }
+        return data.columns
+    }
+
+    /// Updates one row, but first checks that the row can be found again. Without a key, values such as FLOAT
+    /// numbers may not match exactly, and the UPDATE would silently change nothing.
+    func updateOneRow(set: String, where match: String, then: @escaping (Bool) -> Void) {
+        guard let fq, !match.isEmpty else { return }
+        exec("SELECT COUNT(*) FROM \(fq) WHERE \(match); UPDATE \(fq) SET \(set) WHERE \(match) LIMIT 1;") { r in
+            if let e = r.error { self.alertMessage = e; then(false); return }
+            let found = Int((r.sets.first?.rows.first?.first ?? nil) ?? "0") ?? 0
+            if found == 0 {
+                self.alertMessage = "The change was not saved: Lampion could not find this row again. The table has no primary key, "
+                    + "and some of its values (for example FLOAT numbers) can't be matched exactly. Add a primary key in Structure to edit rows safely."
+                then(false)
+                return
+            }
+            then(true)
+        }
+    }
+
+    private func rowCondition(_ row: Int) -> String {
+        return rowKeyColumns.compactMap { k -> String? in
             guard let i = data.index(k), row < data.rows.count else { return nil }
             return "\(SQL.id(k)) <=> \(literal(data.rows[row][i], column: k))"
         }.joined(separator: " AND ")
@@ -243,8 +316,10 @@ final class DBModel: ObservableObject {
     func updateCell(row: Int, column: Int, value: String?, then: (() -> Void)? = nil) {
         guard let fq, row < data.rows.count, column < data.columns.count else { return }
         let name = data.columns[column]
-        let sql = "UPDATE \(fq) SET \(SQL.id(name)) = \(literal(value, column: name)) WHERE \(rowCondition(row)) LIMIT 1;"
-        change(sql) { _ in self.loadData(then: then) }
+        _ = fq
+        updateOneRow(set: "\(SQL.id(name)) = \(literal(value, column: name))", where: rowCondition(row)) { _ in
+            self.loadData(then: then)
+        }
     }
 
     func insertRow(_ values: [String: String], then: (() -> Void)? = nil) {
@@ -347,8 +422,11 @@ final class DBModel: ObservableObject {
         while text.hasSuffix(";") { text = String(text.dropLast()).trimmed }
         guard !text.isEmpty else { return }
         log(text)
+        queryHistory.removeAll { $0 == text }
+        queryHistory.insert(text, at: 0)
+        if queryHistory.count > 30 { queryHistory.removeLast(queryHistory.count - 30) }
         busyCount += 1
-        let db = currentDB
+        let db = queryDatabase ?? currentDB
         queue.async {
             let r = DBClient.run(text + ";\nSELECT ROW_COUNT() AS `__sp_rc`;", database: db)
             DispatchQueue.main.async {
@@ -388,6 +466,10 @@ final class DBModel: ObservableObject {
     func export(db: String, table: String?) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = (table.map { "\(db)-\($0)" } ?? db) + ".sql"
+        // Exports go to ~/Lampion/backups by default once everything lives there.
+        if Paths.usesHome, FileManager.default.fileExists(atPath: Paths.homeBackups) {
+            panel.directoryURL = URL(fileURLWithPath: Paths.homeBackups)
+        }
         panel.title = "Export to SQL File"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         dump(db: db, table: table, to: url.path)

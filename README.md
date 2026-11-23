@@ -5,8 +5,23 @@ with a built-in database manager. Written in SwiftUI, runs natively on Apple Sil
 
 ## Features
 
-- **Servers:** start and stop Apache and MariaDB, see PIDs and ports, detect port conflicts,
-  open config files and logs, event log.
+- **Overview:** server cards for Apache, MariaDB and PHP with state, port, PID and version; start, stop and restart;
+  shortcuts to the site, phpMyAdmin, the database manager, the web folder and Terminal; recent activity.
+- **Configuration:** settings pages for Apache (port, web folder, .htaccess, directory listing, modules, log level),
+  PHP (limits, error display and logging, time zone, OPcache, sessions) and MariaDB (port, network access, capacity,
+  character set and collation, SQL mode, slow and general query logs). Every change is checked by the server itself
+  before it is written, only the changed lines are touched, the original file is kept as `<name>.lampion-backup`,
+  and the server restarts to apply it. MariaDB settings live in their own file, `my.cnf.d/lampion.cnf`.
+- **Logs:** Lampion's activity plus Apache errors and requests, PHP errors, the MariaDB log and its query logs,
+  followed live, split into time, tag and message, filterable by level and searchable.
+- **General:** open at login, start servers when Lampion opens, stop them when it quits, automatic update checks.
+- **One folder:** sites, databases, logs and backups live in `~/Lampion` (`www/`, `databases/`, `logs/`, `backups/`),
+  like XAMPP keeps everything together. New installs start there; existing ones move with General › Locations › Move….
+  Homebrew always starts MariaDB with `--datadir=/opt/homebrew/var/mysql`, so that path becomes a link to
+  `~/Lampion/databases`. The old copies are kept (`/opt/homebrew/var/mysql.lampion-old`).
+- **Connecting from apps:** like XAMPP, `root` has no password, from this Mac only (TCP and socket). MariaDB settings
+  show the host, port and socket and copy ready-made settings for PHP, Laravel, Prisma, Node.js, Python and Java.
+  phpMyAdmin signs in automatically. Both can be turned off.
 - **Database manager:** database and table tree, editable data grid (filter, sort, paging), export to and
   import from SQL files.
 - **Table structure:** table designer, add, change and reorder columns, indexes and primary keys, foreign keys,
@@ -52,10 +67,13 @@ To create the disk image, run `./package.sh`; it writes `build/Lampion-<version>
 
 ```
 Sources/
-├── App/                 app entry point and menu bar commands
+├── App/                 app entry point, menu bar commands, updater, snapshot tool
 ├── Core/                Homebrew paths, process runner, small helpers
-├── Servers/             server control: state, start/stop logic, self-test
-│   └── Views/           main window: module table, status badge, event log
+├── Config/              reading and writing httpd.conf, php.ini and lampion.cnf
+│   └── Views/           the Apache, PHP, MariaDB and General settings pages
+├── Logs/                log sources, live file follower, the Logs pane
+├── Servers/             server control: state, start/stop/restart logic, self-test
+│   └── Views/           main window: sidebar, overview cards, shared components
 └── Database/
     ├── Engine/          talks to MariaDB through the `mariadb` client, parses results
     ├── Model/           database manager state, completion data, self-test
@@ -74,3 +92,7 @@ open -a Lampion --args --dbtest     # database manager, on a temporary test data
 ```
 
 Results are written to `~/Library/Logs/Lampion.log` and `~/Library/Logs/Lampion-dbtest.log`.
+
+To check the design, `build/Lampion.app/Contents/MacOS/Lampion --snapshot <folder>` saves a PNG of every pane
+(and every log) and quits. Run it from Terminal so it can use Terminal's screen recording permission; without it,
+the images are drawn without the translucent sidebar.

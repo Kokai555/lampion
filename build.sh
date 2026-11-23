@@ -34,6 +34,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 
+# Synced folders (iCloud Drive etc.) attach Finder/file-provider attributes that codesign rejects.
+xattr -cr "$APP"
 codesign --force --sign - "$APP"
 # Pass --no-install to only build into build/ (used for testing next to a running copy).
 if [[ "${1:-}" == "--no-install" ]]; then

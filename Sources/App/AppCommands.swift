@@ -16,6 +16,18 @@ struct AppCommands: Commands {
                 .keyboardShortcut("u", modifiers: .command)
         }
 
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { showMain(.general) }.keyboardShortcut(",", modifiers: .command)
+        }
+
+        CommandGroup(before: .sidebar) {
+            ForEach(Array(Pane.allCases.enumerated()), id: \.element) { i, pane in
+                Button(pane.title) { showMain(pane) }
+                    .keyboardShortcut(KeyEquivalent(Character(String(i + 1))), modifiers: .command)
+            }
+            Divider()
+        }
+
         CommandMenu("Server") {
             Button("Start All") { panel.startAll() }.keyboardShortcut("i", modifiers: [.command, .shift])
             Button("Stop All") { panel.stopAll() }.keyboardShortcut("l", modifiers: [.command, .shift])
@@ -23,6 +35,11 @@ struct AppCommands: Commands {
             ForEach(Module.allCases) { m in
                 Button("\(panel.status[m]?.running == true ? "Stop" : "Start") \(m.title)") { panel.toggle(m) }
                     .disabled(panel.busy.contains(m))
+            }
+            Menu("Restart") {
+                ForEach(Module.allCases) { m in
+                    Button(m.title) { panel.restart(m) }.disabled(panel.status[m]?.running != true || panel.busy.contains(m))
+                }
             }
             Divider()
             Button("Open Website") { panel.admin(.apache) }
@@ -38,9 +55,9 @@ struct AppCommands: Commands {
                 Button("phpMyAdmin (config.inc.php)") { panel.openFile(Paths.pmaConf, module: "MySQL") }
             }
             Menu("Logs") {
-                Button("Apache error_log") { panel.openFile(Paths.apacheErrorLog, module: "Apache") }
-                Button("Apache access_log") { panel.openFile(Paths.apacheAccessLog, module: "Apache") }
-                Button("MariaDB Error Log") { panel.openFile(Paths.mysqlErrorLog, module: "MySQL") }
+                ForEach(LogSource.allCases) { source in
+                    Button(source.title) { showMain(.logs); panel.logSource = source }
+                }
             }
         }
 
@@ -58,5 +75,11 @@ struct AppCommands: Commands {
             Button("Run Query") { db.tab = .query; db.runQuery() }
                 .keyboardShortcut("r", modifiers: .command).disabled(db.queryText.trimmed.isEmpty)
         }
+    }
+
+    /// Brings the main window forward on the given pane.
+    private func showMain(_ pane: Pane) {
+        panel.pane = pane
+        openWindow(id: "main")
     }
 }

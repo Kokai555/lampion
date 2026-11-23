@@ -1,9 +1,17 @@
 // Generates the app icon: swift make-icon.swift <output .iconset folder>
-// A paper lantern (lampion) on a warm gradient.
+// A flat paper lantern (lampion) built from simple shapes, on a black tile.
 import AppKit
 
 let out = CommandLine.arguments[1]
 try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
+
+func color(_ hex: UInt32) -> NSColor {
+    NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+}
+
+let tileTop = color(0x2A2A30), tileBottom = color(0x111114)
+let paper = color(0xFF7A33), lit = color(0xFFC15E), rib = color(0xD9561F), metal = color(0xF2F2F5)
 
 func render(_ px: Int) -> Data {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
@@ -12,47 +20,52 @@ func render(_ px: Int) -> Data {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
     let s = CGFloat(px)
-    let top = NSColor(red: 1.00, green: 0.69, blue: 0.23, alpha: 1)
-    let bottom = NSColor(red: 0.88, green: 0.27, blue: 0.17, alpha: 1)
-    let rib = NSColor(red: 0.93, green: 0.42, blue: 0.18, alpha: 1)
+    func R(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect { NSRect(x: s * x, y: s * y, width: s * w, height: s * h) }
+    func P(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: s * x, y: s * y) }
 
-    // Background
-    let tile = NSRect(x: s * 0.098, y: s * 0.098, width: s * 0.804, height: s * 0.804)
-    let tilePath = NSBezierPath(roundedRect: tile, xRadius: s * 0.18, yRadius: s * 0.18)
-    NSGradient(starting: top, ending: bottom)!.draw(in: tilePath, angle: -90)
+    // Tile, on the macOS icon grid (824 of 1024)
+    let tile = NSBezierPath(roundedRect: R(0.0977, 0.0977, 0.8047, 0.8047), xRadius: s * 0.18, yRadius: s * 0.18)
+    NSGradient(starting: tileTop, ending: tileBottom)!.draw(in: tile, angle: -90)
 
-    // Glow behind the lantern
-    tilePath.addClip()
-    let c = NSPoint(x: s * 0.5, y: s * 0.49)
-    NSGradient(starting: NSColor(white: 1, alpha: 0.38), ending: NSColor(white: 1, alpha: 0))!
-        .draw(fromCenter: c, radius: 0, toCenter: c, radius: s * 0.36, options: [])
-
-    NSColor.white.set()
     // Handle
+    metal.setStroke()
     let handle = NSBezierPath()
-    handle.appendArc(withCenter: NSPoint(x: s * 0.5, y: s * 0.715), radius: s * 0.062, startAngle: 0, endAngle: 180)
-    handle.lineWidth = s * 0.022
+    handle.appendArc(withCenter: P(0.5, 0.735), radius: s * 0.05, startAngle: 0, endAngle: 180)
+    handle.lineWidth = s * 0.026
     handle.lineCapStyle = .round
     handle.stroke()
-    // Body
-    let body = NSRect(x: s * 0.315, y: s * 0.30, width: s * 0.37, height: s * 0.40)
-    NSBezierPath(ovalIn: body).fill()
-    // Caps
-    for y in [s * 0.675, s * 0.285] as [CGFloat] {
-        NSBezierPath(roundedRect: NSRect(x: s * 0.415, y: y, width: s * 0.17, height: s * 0.046), xRadius: s * 0.016, yRadius: s * 0.016).fill()
-    }
-    // Tassel
-    let tassel = NSBezierPath()
-    tassel.move(to: NSPoint(x: s * 0.5, y: s * 0.285)); tassel.line(to: NSPoint(x: s * 0.5, y: s * 0.215))
-    tassel.lineWidth = s * 0.018; tassel.lineCapStyle = .round; tassel.stroke()
-    NSBezierPath(ovalIn: NSRect(x: s * 0.478, y: s * 0.185, width: s * 0.044, height: s * 0.044)).fill()
-    // Ribs
-    rib.set()
-    for w in [0.0, 0.20] as [CGFloat] {
-        let r = NSBezierPath(ovalIn: NSRect(x: s * (0.5 - w / 2), y: body.minY + s * 0.012, width: s * w, height: body.height - s * 0.024))
-        r.lineWidth = s * 0.013
+
+    // Body: paper circle, lit middle panel, ribs
+    paper.setFill()
+    NSBezierPath(ovalIn: R(0.29, 0.29, 0.42, 0.42)).fill()
+    lit.setFill()
+    NSBezierPath(ovalIn: R(0.395, 0.29, 0.21, 0.42)).fill()
+    rib.setStroke()
+    for w in [0.21, 0.34] as [CGFloat] {
+        let r = NSBezierPath(ovalIn: R(0.5 - w / 2, 0.29, w, 0.42))
+        r.lineWidth = s * 0.012
         r.stroke()
     }
+    let middle = NSBezierPath()
+    middle.move(to: P(0.5, 0.30)); middle.line(to: P(0.5, 0.70))
+    middle.lineWidth = s * 0.012
+    middle.stroke()
+
+    // Caps
+    metal.setFill()
+    NSBezierPath(roundedRect: R(0.385, 0.682, 0.23, 0.05), xRadius: s * 0.025, yRadius: s * 0.025).fill()
+    NSBezierPath(roundedRect: R(0.40, 0.268, 0.20, 0.046), xRadius: s * 0.023, yRadius: s * 0.023).fill()
+
+    // Tassel
+    let cord = NSBezierPath()
+    cord.move(to: P(0.5, 0.27)); cord.line(to: P(0.5, 0.215))
+    cord.lineWidth = s * 0.016
+    cord.lineCapStyle = .round
+    metal.setStroke()
+    cord.stroke()
+    paper.setFill()
+    NSBezierPath(roundedRect: R(0.476, 0.14, 0.048, 0.085), xRadius: s * 0.024, yRadius: s * 0.024).fill()
+
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
 }

@@ -32,7 +32,7 @@ struct SQLEditor: NSViewRepresentable {
         tv.isAutomaticSpellingCorrectionEnabled = false
         tv.isContinuousSpellCheckingEnabled = false
         tv.isGrammarCheckingEnabled = false
-        tv.textContainerInset = NSSize(width: 6, height: 8)
+        tv.textContainerInset = NSSize(width: 6, height: 10)
         tv.minSize = .zero
         tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         tv.isVerticallyResizable = true
@@ -45,6 +45,11 @@ struct SQLEditor: NSViewRepresentable {
         sv.hasVerticalScroller = true
         sv.drawsBackground = false
         sv.borderType = .noBorder
+        sv.autohidesScrollers = true
+        // Line numbers in a gutter on the left.
+        sv.verticalRulerView = LineNumberRuler(textView: tv, scrollView: sv)
+        sv.hasVerticalRuler = true
+        sv.rulersVisible = true
         context.coordinator.textView = tv
         context.coordinator.highlight()
         NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.runCompleteTest(_:)),
@@ -64,7 +69,10 @@ struct SQLEditor: NSViewRepresentable {
             c.errorText = tv.string
             changed = true
         }
-        if changed { c.highlight() }
+        if changed {
+            c.highlight()
+            (sv.verticalRulerView as? LineNumberRuler)?.refresh()
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
