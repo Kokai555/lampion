@@ -14,6 +14,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = args.firstIndex(of: "--switch-demo"), i + 3 < args.count {
             Snapshot.runSwitchDemo(tab: args[i + 1], first: args[i + 2], second: args[i + 3])
         }
+        if let i = args.firstIndex(of: "--tour-main"), i + 1 < args.count { Tour.runMain(into: args[i + 1]) }
+        if let i = args.firstIndex(of: "--tour-db"), i + 1 < args.count {
+            let folder = args[i + 1], db = i + 2 < args.count ? args[i + 2] : "lampion_demo"
+            // The database window opens a moment after launch.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { Tour.runDB(into: folder, database: db) }
+        }
         if let i = args.firstIndex(of: "--sidebar-demo"), i + 3 < args.count {
             Snapshot.runSidebarDemo(into: args[i + 1], database: args[i + 2], table: args[i + 3])
         }
