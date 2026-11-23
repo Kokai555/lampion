@@ -74,7 +74,7 @@ enum DBClient {
         if r.status != 0 {
             result.error = cleanError(r.err)
         } else if !parsed.ok {
-            result.error = "Az eredmény nem jeleníthető meg (valószínűleg vezérlőkaraktert vagy bináris adatot tartalmaz)."
+            result.error = "The result can't be displayed (it probably contains control characters or binary data)."
         }
         return result
     }
@@ -83,12 +83,12 @@ enum DBClient {
         let lines = err.split(separator: "\n").map(String.init)
         if let e = lines.last(where: { $0.hasPrefix("ERROR") }) {
             if e.contains("(HY000) ") && (e.contains("2002") || e.contains("Can't connect")) {
-                return "Nem lehet csatlakozni az adatbázishoz. Fut a MySQL? (\(e))"
+                return "Can't connect to the database. Is MySQL running? (\(e))"
             }
             return e
         }
         let t = err.trimmed
-        return t.isEmpty ? "Ismeretlen hiba" : t
+        return t.isEmpty ? "Unknown error" : t
     }
 }
 
@@ -181,7 +181,7 @@ enum DBSheet: String, Identifiable {
 }
 
 enum DBTab: String, Hashable {
-    case tables = "Táblák", data = "Adatok", structure = "Szerkezet", query = "Lekérdezés"
+    case tables = "Tables", data = "Data", structure = "Structure", query = "Query"
 }
 
 final class DBModel: ObservableObject {
@@ -274,7 +274,7 @@ final class DBModel: ObservableObject {
             let r = DBClient.run(sql, database: db)
             DispatchQueue.main.async {
                 self.busyCount -= 1
-                if let e = r.error, !quiet { self.log("/* HIBA */ " + e, error: true) }
+                if let e = r.error, !quiet { self.log("/* ERROR */ " + e, error: true) }
                 done(r)
             }
         }
@@ -572,19 +572,19 @@ final class DBModel: ObservableObject {
                 self.shownResult = 0
                 self.queryVersion += 1
                 self.queryError = r.error
-                let time = String(format: "%.3f mp", r.seconds)
+                let time = String(format: "%.3f s", r.seconds)
                 if let e = r.error {
-                    self.log("/* HIBA */ " + e, error: true)
+                    self.log("/* ERROR */ " + e, error: true)
                     self.queryMessage = time
                 } else if shown.isEmpty {
                     if let affected, affected >= 0 {
-                        self.queryMessage = "Kész – érintett sorok: \(affected) · \(time)"
+                        self.queryMessage = "Done – rows affected: \(affected) · \(time)"
                     } else {
-                        self.queryMessage = "Kész – 0 sor · \(time)"
+                        self.queryMessage = "Done – 0 rows · \(time)"
                     }
                 } else {
                     let rows = shown.reduce(0) { $0 + $1.rows.count }
-                    self.queryMessage = "\(shown.count) eredmény, \(rows) sor · \(time)"
+                    self.queryMessage = "\(shown.count) results, \(rows) rows · \(time)"
                 }
                 self.reloadAll()
                 then?()
@@ -596,7 +596,7 @@ final class DBModel: ObservableObject {
     func export(db: String, table: String?) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = (table.map { "\(db)-\($0)" } ?? db) + ".sql"
-        panel.title = "Exportálás SQL fájlba"
+        panel.title = "Export to SQL File"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         dump(db: db, table: table, to: url.path)
     }
@@ -612,10 +612,10 @@ final class DBModel: ObservableObject {
                 self.busyCount -= 1
                 if r.status != 0 {
                     let e = DBClient.cleanError(r.err)
-                    self.log("/* HIBA */ " + e, error: true)
+                    self.log("/* ERROR */ " + e, error: true)
                     self.alertMessage = e
                 } else {
-                    self.log("/* Export kész */")
+                    self.log("/* Export done */")
                 }
                 then?(r.status == 0)
             }
@@ -624,7 +624,7 @@ final class DBModel: ObservableObject {
 
     func importSQL(into db: String?) {
         let panel = NSOpenPanel()
-        panel.title = "SQL fájl importálása"
+        panel.title = "Import SQL File"
         panel.allowedContentTypes = [.init(filenameExtension: "sql") ?? .plainText, .plainText]
         guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
         log("/* Import: \(url.lastPathComponent)\(db.map { " → " + $0 } ?? "") */")
@@ -634,10 +634,10 @@ final class DBModel: ObservableObject {
             DispatchQueue.main.async {
                 self.busyCount -= 1
                 if let e = r.error {
-                    self.log("/* HIBA */ " + e, error: true)
+                    self.log("/* ERROR */ " + e, error: true)
                     self.alertMessage = e
                 } else {
-                    self.log("/* Import kész */")
+                    self.log("/* Import done */")
                 }
                 self.reloadAll()
             }
@@ -673,11 +673,11 @@ struct GridView: NSViewRepresentable {
         tv.delegate = context.coordinator
 
         let menu = NSMenu()
-        let copy = NSMenuItem(title: "Cella másolása", action: #selector(Coordinator.copyCell), keyEquivalent: "")
+        let copy = NSMenuItem(title: "Copy Cell", action: #selector(Coordinator.copyCell), keyEquivalent: "")
         copy.target = context.coordinator
         menu.addItem(copy)
         if editable {
-            let null = NSMenuItem(title: "NULL értékre állítás", action: #selector(Coordinator.setNull), keyEquivalent: "")
+            let null = NSMenuItem(title: "Set to NULL", action: #selector(Coordinator.setNull), keyEquivalent: "")
             null.target = context.coordinator
             menu.addItem(null)
         }
@@ -1001,10 +1001,10 @@ struct DatabaseWindow: View {
                 if let e = m.connectionError {
                     VStack(spacing: 12) {
                         Image(systemName: "bolt.horizontal.circle").font(.system(size: 40)).foregroundStyle(.secondary)
-                        Text("Nincs kapcsolat az adatbázissal").font(.title3.weight(.semibold))
+                        Text("No Connection to the Database").font(.title3.weight(.semibold))
                         Text(e).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                             .textSelection(.enabled).frame(maxWidth: 520)
-                        Button("Újrapróbálás") { m.reloadAll() }
+                        Button("Try Again") { m.reloadAll() }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -1016,26 +1016,26 @@ struct DatabaseWindow: View {
             .alert(m.confirm?.title ?? "", isPresented: Binding(get: { m.confirm != nil }, set: { if !$0 { m.confirm = nil } }),
                    presenting: m.confirm) { c in
                 Button(c.button, role: .destructive) { c.action() }
-                Button("Mégse", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}
             } message: { c in Text(c.message) }
         }
         .navigationTitle(title)
         .toolbar {
             ToolbarItemGroup {
                 if m.busyCount > 0 { ProgressView().controlSize(.small) }
-                Button { m.reloadAll() } label: { Label("Frissítés", systemImage: "arrow.clockwise") }
-                    .help("Adatbázisok és táblák újratöltése")
+                Button { m.reloadAll() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                    .help("Reload databases and tables")
                 Menu {
-                    Button("Új adatbázis…") { m.sheet = .newDatabase }
-                    Button("Új tábla…") { m.sheet = .newTable }.disabled(m.currentDB == nil)
-                } label: { Label("Új", systemImage: "plus") }
-                    .help("Új adatbázis vagy tábla")
+                    Button("New Database…") { m.sheet = .newDatabase }
+                    Button("New Table…") { m.sheet = .newTable }.disabled(m.currentDB == nil)
+                } label: { Label("New", systemImage: "plus") }
+                    .help("New database or table")
                 Button { if let d = m.currentDB { m.export(db: d, table: m.currentTable) } } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
-                .help("A kiválasztott adatbázis vagy tábla mentése SQL fájlba").disabled(m.currentDB == nil)
+                .help("Save the selected database or table to an SQL file").disabled(m.currentDB == nil)
                 Button { m.importSQL(into: m.currentDB) } label: { Label("Import", systemImage: "square.and.arrow.down") }
-                    .help("SQL fájl futtatása a kiválasztott adatbázisban")
+                    .help("Run an SQL file in the selected database")
             }
         }
         .frame(minWidth: 960, minHeight: 600)
@@ -1052,14 +1052,14 @@ struct DatabaseWindow: View {
             case .insertRow: InsertRowSheet()
             }
         }
-        .alert("Hiba", isPresented: Binding(get: { m.alertMessage != nil }, set: { if !$0 { m.alertMessage = nil } })) {
+        .alert("Error", isPresented: Binding(get: { m.alertMessage != nil }, set: { if !$0 { m.alertMessage = nil } })) {
             Button("OK") {}
         } message: { Text(m.alertMessage ?? "") }
     }
 
     private var title: String {
         switch m.selection {
-        case nil: return "Adatbázis-kezelő"
+        case nil: return "Database Manager"
         case .database(let d): return d
         case .table(let d, let t): return "\(d) › \(t)"
         }
@@ -1094,29 +1094,29 @@ struct DBSidebar: View {
                         Label(t.name, systemImage: t.isView ? "eye" : "tablecells")
                             .tag(Node.table(db, t.name))
                             .contextMenu {
-                                Button("Exportálás…") { m.export(db: db, table: t.name) }
+                                Button("Export…") { m.export(db: db, table: t.name) }
                                 if !t.isView {
-                                    Button("Tábla kiürítése…") {
-                                        m.confirm = ConfirmRequest(title: "Kiüríted a(z) „\(t.name)” táblát?",
-                                                                   message: "A tábla összes sora törlődik. Ez nem vonható vissza.",
-                                                                   button: "Kiürítés") { m.truncateTable(t.name, in: db) }
+                                    Button("Empty Table…") {
+                                        m.confirm = ConfirmRequest(title: "Empty the table “\(t.name)”?",
+                                                                   message: "All rows in the table will be deleted. This can't be undone.",
+                                                                   button: "Empty") { m.truncateTable(t.name, in: db) }
                                     }
                                 }
-                                Button("Törlés…") {
-                                    m.confirm = ConfirmRequest(title: "Törlöd a(z) „\(t.name)” táblát?",
-                                                               message: "A tábla és minden adata végleg törlődik.",
-                                                               button: "Törlés") { m.dropTable(t.name, in: db, isView: t.isView) }
+                                Button("Delete…") {
+                                    m.confirm = ConfirmRequest(title: "Delete the table “\(t.name)”?",
+                                                               message: "The table and all its data will be permanently deleted.",
+                                                               button: "Delete") { m.dropTable(t.name, in: db, isView: t.isView) }
                                 }
                             }
                     }
                 } label: {
                     Label(db, systemImage: "cylinder")
                         .contextMenu {
-                            Button("Exportálás…") { m.export(db: db, table: nil) }
-                            Button("Adatbázis törlése…") {
-                                m.confirm = ConfirmRequest(title: "Törlöd a(z) „\(db)” adatbázist?",
-                                                           message: "Az adatbázis összes táblája és adata végleg törlődik.",
-                                                           button: "Törlés") { m.dropDatabase(db) }
+                            Button("Export…") { m.export(db: db, table: nil) }
+                            Button("Delete Database…") {
+                                m.confirm = ConfirmRequest(title: "Delete the database “\(db)”?",
+                                                           message: "All tables and data in the database will be permanently deleted.",
+                                                           button: "Delete") { m.dropDatabase(db) }
                             }
                         }
                 }
@@ -1124,7 +1124,7 @@ struct DBSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .searchable(text: $search, placement: .sidebar, prompt: "Szűrés")
+        .searchable(text: $search, placement: .sidebar, prompt: "Filter")
     }
 }
 
@@ -1159,13 +1159,13 @@ struct TablesView: View {
         let list = m.currentDB.flatMap { m.tables[$0] } ?? []
         if list.isEmpty {
             VStack(spacing: 10) {
-                Text("Ebben az adatbázisban még nincs tábla.").foregroundStyle(.secondary)
-                Button("Új tábla…") { m.sheet = .newTable }
+                Text("This database has no tables yet.").foregroundStyle(.secondary)
+                Button("New Table…") { m.sheet = .newTable }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            GridView(columns: ["Tábla", "Típus", "Motor", "Sorok (kb.)", "Méret", "Illesztés"],
-                     rows: list.map { [$0.name, $0.isView ? "nézet" : "tábla", $0.engine, $0.rows,
+            GridView(columns: ["Table", "Type", "Engine", "Rows (approx.)", "Size", "Collation"],
+                     rows: list.map { [$0.name, $0.isView ? "view" : "table", $0.engine, $0.rows,
                                        TablesView.sizeFmt.string(fromByteCount: $0.bytes), $0.collation] },
                      version: list.hashValue)
         }
@@ -1179,19 +1179,19 @@ struct DataView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "line.3.horizontal.decrease.circle").foregroundStyle(.secondary)
-                TextField("Szűrő – WHERE feltétel, pl. id > 10 AND nev LIKE 'a%'", text: $m.filter)
+                TextField("Filter – WHERE condition, e.g. id > 10 AND name LIKE 'a%'", text: $m.filter)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12, design: .monospaced))
                     .onSubmit { m.offset = 0; m.loadData() }
-                Button { m.loadData() } label: { Image(systemName: "arrow.clockwise") }.help("Adatok újratöltése")
+                Button { m.loadData() } label: { Image(systemName: "arrow.clockwise") }.help("Reload data")
                 Divider().frame(height: 16)
-                Button { m.sheet = .insertRow } label: { Label("Új sor", systemImage: "plus") }
+                Button { m.sheet = .insertRow } label: { Label("New Row", systemImage: "plus") }
                     .disabled(m.currentTableInfo?.isView == true)
                 Button {
                     let n = m.selectedRows.count
-                    m.confirm = ConfirmRequest(title: "Törlöd a kijelölt \(n) sort?", message: "Ez nem vonható vissza.",
-                                               button: "Törlés") { m.deleteSelectedRows() }
-                } label: { Label("Törlés", systemImage: "minus") }
+                    m.confirm = ConfirmRequest(title: "Delete the \(n) selected rows?", message: "This can't be undone.",
+                                               button: "Delete") { m.deleteSelectedRows() }
+                } label: { Label("Delete", systemImage: "minus") }
                 .disabled(m.selectedRows.isEmpty || m.currentTableInfo?.isView == true)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1212,7 +1212,7 @@ struct DataView: View {
             HStack(spacing: 10) {
                 Text(rangeText).font(.callout).foregroundStyle(.secondary).monospacedDigit()
                 Spacer()
-                Text("Dupla kattintás: szerkesztés · jobb gomb: NULL / másolás").font(.caption).foregroundStyle(.secondary)
+                Text("Double-click to edit · right-click for NULL / copy").font(.caption).foregroundStyle(.secondary)
                 Button { m.page(-1) } label: { Image(systemName: "chevron.left") }.disabled(m.offset == 0)
                 Button { m.page(1) } label: { Image(systemName: "chevron.right") }
                     .disabled(m.offset + m.data.rows.count >= (m.totalRows ?? 0))
@@ -1223,9 +1223,9 @@ struct DataView: View {
 
     private var rangeText: String {
         let count = m.data.rows.count
-        guard count > 0 else { return "0 sor" }
+        guard count > 0 else { return "0 rows" }
         let total = m.totalRows.map { " / \($0)" } ?? ""
-        return "\(m.offset + 1)–\(m.offset + count)\(total) sor"
+        return "\(m.offset + 1)–\(m.offset + count)\(total) rows"
     }
 }
 
@@ -1236,34 +1236,34 @@ struct StructureView: View {
         VSplitView {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("Oszlopok").font(.headline)
+                    Text("Columns").font(.headline)
                     Spacer()
-                    Button { m.sheet = .addColumn } label: { Label("Oszlop hozzáadása", systemImage: "plus") }
+                    Button { m.sheet = .addColumn } label: { Label("Add Column", systemImage: "plus") }
                         .disabled(m.currentTableInfo?.isView == true)
                     Button {
                         guard let i = m.selectedColumns.first, i < m.columns.count else { return }
                         let name = m.columns[i].name
-                        m.confirm = ConfirmRequest(title: "Törlöd a(z) „\(name)” oszlopot?",
-                                                   message: "Az oszlop összes adata végleg törlődik.",
-                                                   button: "Törlés") { m.dropColumn(name) }
-                    } label: { Label("Oszlop törlése", systemImage: "minus") }
+                        m.confirm = ConfirmRequest(title: "Delete the column “\(name)”?",
+                                                   message: "All data in the column will be permanently deleted.",
+                                                   button: "Delete") { m.dropColumn(name) }
+                    } label: { Label("Delete Column", systemImage: "minus") }
                     .disabled(m.selectedColumns.count != 1 || m.currentTableInfo?.isView == true)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 Divider()
-                GridView(columns: ["Név", "Típus", "NULL", "Kulcs", "Alapérték", "Extra", "Illesztés", "Megjegyzés"],
+                GridView(columns: ["Name", "Type", "NULL", "Key", "Default", "Extra", "Collation", "Comment"],
                          rows: m.columns.map { [$0.name, $0.type, $0.null, $0.key, $0.def, $0.extra, $0.collation, $0.comment] },
                          version: m.dataVersion &+ m.columns.count, selection: $m.selectedColumns)
             }
             .frame(minHeight: 150)
 
             VStack(spacing: 0) {
-                HStack { Text("Indexek").font(.headline); Spacer() }.padding(.horizontal, 12).padding(.vertical, 6)
+                HStack { Text("Indexes").font(.headline); Spacer() }.padding(.horizontal, 12).padding(.vertical, 6)
                 Divider()
-                GridView(columns: ["Index", "Oszlop", "Egyedi", "Típus"],
+                GridView(columns: ["Index", "Column", "Unique", "Type"],
                          rows: m.indexes.rows.indices.map { i in
                              [m.indexes.value(i, "Key_name"), m.indexes.value(i, "Column_name"),
-                              m.indexes.value(i, "Non_unique") == "0" ? "igen" : "nem", m.indexes.value(i, "Index_type")]
+                              m.indexes.value(i, "Non_unique") == "0" ? "yes" : "no", m.indexes.value(i, "Index_type")]
                          },
                          version: m.dataVersion &+ m.indexes.rows.count)
             }
@@ -1292,14 +1292,14 @@ struct QueryView: View {
                     .background(Color(nsColor: .textBackgroundColor))
                 Divider()
                 HStack(spacing: 10) {
-                    Button { m.runQuery() } label: { Label("Futtatás", systemImage: "play.fill") }
+                    Button { m.runQuery() } label: { Label("Run", systemImage: "play.fill") }
                         .buttonStyle(.borderedProminent)
-                        .help("Futtatás (⌘R)")
-                    Text("Adatbázis: \(m.currentDB ?? "nincs kiválasztva")  ·  Tab: kiegészítés").font(.callout).foregroundStyle(.secondary)
+                        .help("Run (⌘R)")
+                    Text("Database: \(m.currentDB ?? "none selected")  ·  Tab: autocomplete").font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     if m.queryResults.count > 1 {
                         Picker("", selection: $m.shownResult) {
-                            ForEach(m.queryResults.indices, id: \.self) { Text("Eredmény \($0 + 1)").tag($0) }
+                            ForEach(m.queryResults.indices, id: \.self) { Text("Result \($0 + 1)").tag($0) }
                         }
                         .labelsHidden().fixedSize()
                     }
@@ -1319,7 +1319,7 @@ struct QueryView: View {
                     let set = m.queryResults[m.shownResult]
                     GridView(columns: set.columns, rows: set.rows, version: m.queryVersion &* 100 &+ m.shownResult)
                 } else {
-                    Text("Írj be egy SQL utasítást, és nyomd meg a ⌘R-t.").foregroundStyle(.secondary)
+                    Text("Type an SQL statement and press ⌘R.").foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
@@ -1371,7 +1371,7 @@ struct SheetFrame<Content: View>: View {
             content
             HStack {
                 Spacer()
-                Button("Mégse") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(confirm, action: action).keyboardShortcut(.defaultAction).disabled(!canConfirm)
             }
         }
@@ -1386,11 +1386,11 @@ struct NewDatabaseSheet: View {
     @State private var collation = "utf8mb4_general_ci"
 
     var body: some View {
-        SheetFrame(title: "Új adatbázis", confirm: "Létrehozás", canConfirm: !name.trimmed.isEmpty,
+        SheetFrame(title: "New Database", confirm: "Create", canConfirm: !name.trimmed.isEmpty,
                    action: { m.createDatabase(name.trimmed, collation: collation) }) {
             Form {
-                TextField("Név", text: $name)
-                Picker("Illesztés", selection: $collation) {
+                TextField("Name", text: $name)
+                Picker("Collation", selection: $collation) {
                     ForEach(["utf8mb4_general_ci", "utf8mb4_unicode_ci", "utf8mb4_hungarian_ci", "utf8mb4_bin"], id: \.self) {
                         Text($0)
                     }
@@ -1405,10 +1405,10 @@ struct NewTableSheet: View {
     @State private var name = ""
 
     var body: some View {
-        SheetFrame(title: "Új tábla – \(m.currentDB ?? "")", confirm: "Létrehozás", canConfirm: !name.trimmed.isEmpty,
+        SheetFrame(title: "New Table – \(m.currentDB ?? "")", confirm: "Create", canConfirm: !name.trimmed.isEmpty,
                    action: { if let d = m.currentDB { m.createTable(name.trimmed, in: d) } }) {
-            Form { TextField("Név", text: $name) }
-            Text("A tábla egy automatikusan növekvő „id” elsődleges kulccsal jön létre. A többi oszlopot a Szerkezet fülön adhatod hozzá.")
+            Form { TextField("Name", text: $name) }
+            Text("The table is created with an auto-increment “id” primary key. Add the other columns on the Structure tab.")
                 .font(.callout).foregroundStyle(.secondary)
         }
     }
@@ -1424,17 +1424,17 @@ struct AddColumnSheet: View {
                            "DATE", "DATETIME", "TIMESTAMP", "JSON"]
 
     var body: some View {
-        SheetFrame(title: "Oszlop hozzáadása – \(m.currentTable ?? "")", confirm: "Hozzáadás",
+        SheetFrame(title: "Add Column – \(m.currentTable ?? "")", confirm: "Add",
                    canConfirm: !name.trimmed.isEmpty && !type.trimmed.isEmpty,
                    action: { m.addColumn(name: name.trimmed, type: type.trimmed, nullable: nullable, defaultValue: defaultValue) }) {
             Form {
-                TextField("Név", text: $name)
+                TextField("Name", text: $name)
                 HStack {
-                    TextField("Típus", text: $type)
-                    Menu("Gyakori") { ForEach(presets, id: \.self) { p in Button(p) { type = p } } }.fixedSize()
+                    TextField("Type", text: $type)
+                    Menu("Common") { ForEach(presets, id: \.self) { p in Button(p) { type = p } } }.fixedSize()
                 }
-                Toggle("Lehet NULL", isOn: $nullable)
-                TextField("Alapérték", text: $defaultValue, prompt: Text("nincs"))
+                Toggle("Allow NULL", isOn: $nullable)
+                TextField("Default", text: $defaultValue, prompt: Text("none"))
             }
         }
     }
@@ -1445,19 +1445,19 @@ struct InsertRowSheet: View {
     @State private var values: [String: String] = [:]
 
     var body: some View {
-        SheetFrame(title: "Új sor – \(m.currentTable ?? "")", confirm: "Beszúrás", canConfirm: true,
+        SheetFrame(title: "New Row – \(m.currentTable ?? "")", confirm: "Insert", canConfirm: true,
                    action: { m.insertRow(values.filter { !$0.value.isEmpty }) }) {
             ScrollView {
                 Form {
                     ForEach(m.columns) { c in
                         TextField(c.name, text: Binding(get: { values[c.name] ?? "" }, set: { values[c.name] = $0 }),
-                                  prompt: Text(c.extra.contains("auto_increment") ? "automatikus" : c.type))
+                                  prompt: Text(c.extra.contains("auto_increment") ? "automatic" : c.type))
                     }
                 }
                 .padding(.trailing, 6)
             }
             .frame(maxHeight: 360)
-            Text("Az üresen hagyott mezők az alapértéküket kapják.").font(.callout).foregroundStyle(.secondary)
+            Text("Fields left empty get their default value.").font(.callout).foregroundStyle(.secondary)
         }
     }
 }
@@ -1485,69 +1485,69 @@ extension DBModel {
                 Thread.sleep(forTimeInterval: 0.1)
             }
         }
-        func check(_ ok: Bool, _ what: String) { out((ok ? "OK   " : "HIBA ") + what); if !ok { failures += 1 } }
+        func check(_ ok: Bool, _ what: String) { out((ok ? "OK   " : "FAIL ") + what); if !ok { failures += 1 } }
         func cell(_ row: Int, _ col: String) -> String? { onMain { self.data.value(row, col) } }
 
         let db = "_szerverpanel_teszt", tricky = "Árvíztűrő 'tükörfúrógép' \\ <b>&\"x\""
         DispatchQueue.global(qos: .userInitiated).async {
             wait()
             onMain { self.alertMessage = nil }
-            check(onMain { self.connectionError == nil && self.databases.contains("mysql") }, "Csatlakozás és adatbázisok listázása")
+            check(onMain { self.connectionError == nil && self.databases.contains("mysql") }, "Connect and list databases")
 
             if onMain({ self.databases.contains(db) }) { onMain { self.dropDatabase(db) }; wait() }
             onMain { self.createDatabase(db, collation: "utf8mb4_hungarian_ci") }; wait()
-            check(onMain { self.databases.contains(db) }, "Adatbázis létrehozása")
+            check(onMain { self.databases.contains(db) }, "Create database")
 
             onMain { self.createTable("termekek", in: db) }; wait()
-            check(onMain { self.selection == .table(db, "termekek") && self.columns.map(\.name) == ["id"] }, "Tábla létrehozása")
+            check(onMain { self.selection == .table(db, "termekek") && self.columns.map(\.name) == ["id"] }, "Create table")
 
             onMain { self.addColumn(name: "nev", type: "VARCHAR(100)", nullable: true, defaultValue: "") }; wait()
             onMain { self.addColumn(name: "ar", type: "DECIMAL(10,2)", nullable: false, defaultValue: "0") }; wait()
-            check(onMain { self.columns.map(\.name) == ["id", "nev", "ar"] }, "Oszlopok hozzáadása")
+            check(onMain { self.columns.map(\.name) == ["id", "nev", "ar"] }, "Add columns")
 
             onMain { self.insertRow(["nev": tricky, "ar": "1999.50"]) }; wait()
             onMain { self.insertRow(["nev": "Második", "ar": "500"]) }; wait()
-            check(onMain { self.data.rows.count == 2 && self.totalRows == 2 }, "Sorok beszúrása")
-            check(cell(0, "nev") == tricky, "Ékezetek és speciális karakterek sértetlenek")
+            check(onMain { self.data.rows.count == 2 && self.totalRows == 2 }, "Insert rows")
+            check(cell(0, "nev") == tricky, "Accented and special characters survive intact")
 
             onMain { self.updateCell(row: 1, column: 1, value: "Módosítva") }; wait()
-            check(cell(1, "nev") == "Módosítva", "Cella szerkesztése")
+            check(cell(1, "nev") == "Módosítva", "Edit cell")
             onMain { self.updateCell(row: 1, column: 1, value: nil) }; wait()
-            check(onMain { self.data.rows.count == 2 && self.data.rows[1][1] == nil }, "Cella NULL-ra állítása")
+            check(onMain { self.data.rows.count == 2 && self.data.rows[1][1] == nil }, "Set cell to NULL")
 
             onMain { self.filter = "ar > 1000"; self.loadData() }; wait()
-            check(onMain { self.data.rows.count == 1 && self.totalRows == 1 }, "Szűrés (WHERE)")
+            check(onMain { self.data.rows.count == 1 && self.totalRows == 1 }, "Filter (WHERE)")
             onMain { self.filter = "nincs_ilyen = 1"; self.loadData() }; wait()
-            check(onMain { self.dataError != nil }, "Hibás szűrő hibát jelez")
+            check(onMain { self.dataError != nil }, "Invalid filter reports an error")
             onMain { self.filter = ""; self.sort(by: "ar") }; wait()
-            check(cell(0, "ar") == "500.00", "Rendezés növekvő")
+            check(cell(0, "ar") == "500.00", "Sort ascending")
             onMain { self.sort(by: "ar") }; wait()
-            check(cell(0, "ar") == "1999.50", "Rendezés csökkenő")
+            check(cell(0, "ar") == "1999.50", "Sort descending")
 
             onMain { self.queryText = "SELECT COUNT(*) AS db FROM termekek;\nSELECT nev, ar FROM termekek ORDER BY id;"; self.runQuery() }; wait()
             check(onMain { self.queryError == nil && self.queryResults.count == 2 && self.queryResults[0].rows.first?.first == "2"
-                           && self.queryResults[1].rows.count == 2 }, "Lekérdezés több eredménnyel")
+                           && self.queryResults[1].rows.count == 2 }, "Query with multiple results")
             onMain { self.queryText = "UPDATE termekek SET ar = ar + 1"; self.runQuery() }; wait()
-            check(onMain { self.queryMessage.contains("érintett sorok: 2") }, "Módosító lekérdezés, érintett sorok száma")
+            check(onMain { self.queryMessage.contains("rows affected: 2") }, "Modifying query reports rows affected")
             onMain { self.queryText = "SELEC hiba"; self.runQuery() }; wait()
-            check(onMain { self.queryError?.contains("1064") == true }, "Hibás SQL hibát jelez")
+            check(onMain { self.queryError?.contains("1064") == true }, "Invalid SQL reports an error")
 
             let dumpPath = NSTemporaryDirectory() + "szerverpanel-teszt.sql"
             onMain { self.dump(db: db, table: nil, to: dumpPath) }; wait()
             let dumped = (try? String(contentsOfFile: dumpPath, encoding: .utf8)) ?? ""
-            check(dumped.contains("CREATE TABLE `termekek`") && dumped.contains("tükörfúrógép"), "Export SQL fájlba")
+            check(dumped.contains("CREATE TABLE `termekek`") && dumped.contains("tükörfúrógép"), "Export to SQL file")
             try? FileManager.default.removeItem(atPath: dumpPath)
 
-            check(onMain { self.completions(prefix: "ter", qualifier: nil) } == ["termekek"], "Kiegészítés: táblanév")
-            check(onMain { self.completions(prefix: "", qualifier: "termekek") } == ["id", "nev", "ar"], "Kiegészítés: tabla. után az oszlopok")
-            check(onMain { self.completions(prefix: "sel", qualifier: nil) } == ["SELECT"], "Kiegészítés: kulcsszó")
-            check(onMain { self.completions(prefix: "n", qualifier: "t").contains("nev") }, "Kiegészítés: álnév után oszlopok")
+            check(onMain { self.completions(prefix: "ter", qualifier: nil) } == ["termekek"], "Completion: table name")
+            check(onMain { self.completions(prefix: "", qualifier: "termekek") } == ["id", "nev", "ar"], "Completion: columns after table.")
+            check(onMain { self.completions(prefix: "sel", qualifier: nil) } == ["SELECT"], "Completion: keyword")
+            check(onMain { self.completions(prefix: "n", qualifier: "t").contains("nev") }, "Completion: columns after an alias")
 
             onMain { self.tab = .query; self.queryText = "SELECT * FROM ter" }
             Thread.sleep(forTimeInterval: 0.8)
             onMain { NotificationCenter.default.post(name: SQLEditor.completeTest, object: nil) }
             Thread.sleep(forTimeInterval: 1.2)
-            check(onMain { self.queryText } == "SELECT * FROM termekek", "Tab a szerkesztőben beírja az egyetlen találatot")
+            check(onMain { self.queryText } == "SELECT * FROM termekek", "Tab in the editor inserts the single match")
             onMain { self.queryText = "SELECT * FROM termekek WHERE termekek." }
             Thread.sleep(forTimeInterval: 0.5)
             DispatchQueue.main.async { NotificationCenter.default.post(name: SQLEditor.completeTest, object: nil) }
@@ -1556,18 +1556,18 @@ extension DBModel {
             onMain { self.queryText = "SELECT * FROM termekek;"; self.runQuery(); self.tab = .data; self.loadData() }; wait()
 
             onMain { self.selectedRows = [0]; self.deleteSelectedRows() }; wait()
-            check(onMain { self.data.rows.count == 1 }, "Sor törlése")
+            check(onMain { self.data.rows.count == 1 }, "Delete row")
             onMain { self.dropColumn("ar") }; wait()
-            check(onMain { self.columns.map(\.name) == ["id", "nev"] }, "Oszlop törlése")
+            check(onMain { self.columns.map(\.name) == ["id", "nev"] }, "Delete Column")
             onMain { self.truncateTable("termekek", in: db) }; wait()
-            check(onMain { self.data.rows.isEmpty }, "Tábla kiürítése")
+            check(onMain { self.data.rows.isEmpty }, "Empty table")
             onMain { self.dropTable("termekek", in: db) }; wait()
-            check(onMain { self.tables[db]?.isEmpty == true }, "Tábla törlése")
+            check(onMain { self.tables[db]?.isEmpty == true }, "Delete table")
             onMain { self.dropDatabase(db) }; wait()
-            check(onMain { !self.databases.contains(db) }, "Adatbázis törlése")
-            check(onMain { self.alertMessage == nil }, "Nem maradt váratlan hibaüzenet")
+            check(onMain { !self.databases.contains(db) }, "Delete database")
+            check(onMain { self.alertMessage == nil }, "No unexpected error message left")
 
-            out(failures == 0 ? "ADATBAZIS-ONTESZT SIKERES" : "ADATBAZIS-ONTESZT HIBAS: \(failures) hiba")
+            out(failures == 0 ? "DATABASE SELF-TEST PASSED" : "DATABASE SELF-TEST FAILED: \(failures) failures")
         }
     }
 }

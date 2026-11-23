@@ -3,8 +3,6 @@
 A native macOS control panel for local web development: start, stop and monitor Apache, PHP and MariaDB,
 with a built-in database manager. Written in SwiftUI, runs natively on Apple Silicon.
 
-> The app's user interface is in Hungarian.
-
 ## Features
 
 - **Servers:** start and stop Apache and MariaDB, see PIDs and ports, detect port conflicts,

@@ -95,7 +95,7 @@ final class Panel: ObservableObject {
     private var generation = 0
 
     init() {
-        add("Panel", "Szerverpanel elindult")
+        add("Panel", "Szerverpanel started")
         add("Panel", "Homebrew: \(Paths.brew)  ·  htdocs: \(Paths.htdocs)")
         DispatchQueue.global(qos: .utility).async { self.loadPHP() }
         refresh(initial: true)
@@ -113,7 +113,7 @@ final class Panel: ObservableObject {
 
     func add(_ module: String, _ text: String, _ level: LogEntry.Level = .info) {
         let entry = LogEntry(module: module, text: text, level: level)
-        let tag = ["info": "", "ok": " OK", "warn": " FIGYELEM", "error": " HIBA"]["\(level)"] ?? ""
+        let tag = ["info": "", "ok": " OK", "warn": " WARN", "error": " ERROR"]["\(level)"] ?? ""
         let line = "\(Panel.fileFmt.string(from: entry.time)) [\(module)]\(tag) \(text)\n"
         fileQueue.async {
             let url = Panel.logURL
@@ -147,10 +147,10 @@ final class Panel: ObservableObject {
             if r.status == 0, let v = parts.first {
                 self.phpVersion = v
                 self.phpIni = parts.count > 1 ? parts[1] : nil
-                self.add("PHP", "PHP \(v) – " + (linked ? "be van kötve az Apache-ba" : "NINCS bekötve az Apache-ba"),
+                self.add("PHP", "PHP \(v) – " + (linked ? "linked into Apache" : "NOT linked into Apache"),
                          linked ? .info : .warn)
             } else {
-                self.add("PHP", "A PHP nem található (\(Paths.php))", .error)
+                self.add("PHP", "PHP not found (\(Paths.php))", .error)
             }
             self.phpLinked = linked
         }
@@ -231,14 +231,14 @@ final class Panel: ObservableObject {
                 for m in Module.allCases {
                     guard let n = new[m] else { continue }
                     if initial {
-                        if !n.installed { self.add(m.title, "Nincs telepítve (\(m.binary))", .error) }
-                        else if n.running { self.add(m.title, "Fut – port: \(self.portText(n))", .ok) }
-                        else { self.add(m.title, "Leállítva") }
+                        if !n.installed { self.add(m.title, "Not installed (\(m.binary))", .error) }
+                        else if n.running { self.add(m.title, "Running – port: \(self.portText(n))", .ok) }
+                        else { self.add(m.title, "Stopped") }
                     } else if let o = old[m], !self.busy.contains(m), o.running != n.running {
                         if n.running {
-                            self.add(m.title, "Elindult (kívülről)", .ok)
+                            self.add(m.title, "Started (externally)", .ok)
                         } else {
-                            self.add(m.title, "Leállt váratlanul. A naplóban ez áll:", .warn)
+                            self.add(m.title, "Stopped unexpectedly. The log says:", .warn)
                             for line in Panel.errorLines(m) { self.add(m.title, "  " + line, .warn) }
                         }
                     }
@@ -257,7 +257,7 @@ final class Panel: ObservableObject {
         let current = status[m] ?? ModuleStatus()
         let wasRunning = current.running
         busy.insert(m)
-        add(m.title, wasRunning ? "Leállítás…" : "Indítás…")
+        add(m.title, wasRunning ? "Stopping…" : "Starting…")
         let port = configuredPort(m)
 
         actions.async {
@@ -275,13 +275,13 @@ final class Panel: ObservableObject {
                 if m == .apache {
                     let t = Shell.run(Paths.httpd, ["-t"])
                     if t.status != 0 {
-                        self.add(m.title, "Hibás konfiguráció (httpd.conf):", .error)
+                        self.add(m.title, "Invalid configuration (httpd.conf):", .error)
                         self.addOutput(m.title, t.out)
                         return
                     }
                 }
                 if Panel.portInUse(port) {
-                    self.add(m.title, "A port már foglalt: \(port). Valószínűleg az XAMPP vagy egy másik program használja.", .error)
+                    self.add(m.title, "Port \(port) is already in use, probably by XAMPP or another program.", .error)
                     return
                 }
             }
@@ -289,7 +289,7 @@ final class Panel: ObservableObject {
             let verb = wasRunning ? "stop" : (current.loaded ? "restart" : "start")
             let r = Shell.run(Paths.brewBin, ["services", verb, m.formula])
             if r.status != 0 {
-                self.add(m.title, "A brew services \(verb) hibát adott:", .error)
+                self.add(m.title, "brew services \(verb) failed:", .error)
                 self.addOutput(m.title, r.out)
                 return
             }
@@ -302,8 +302,8 @@ final class Panel: ObservableObject {
             }
 
             if wasRunning {
-                s.running ? self.add(m.title, "Nem sikerült leállítani", .error)
-                          : self.add(m.title, "Leállítva", .ok)
+                s.running ? self.add(m.title, "Could not stop", .error)
+                          : self.add(m.title, "Stopped", .ok)
                 final = s
                 return
             }
@@ -314,7 +314,7 @@ final class Panel: ObservableObject {
                 Thread.sleep(forTimeInterval: 2.5)
                 let again = Panel.probeAll()[m] ?? ModuleStatus()
                 if again.running && !again.ports.isEmpty && again.pids.first == pid {
-                    self.add(m.title, "Elindítva – PID: \(pid.map(String.init) ?? "?"), port: \(self.portText(again))", .ok)
+                    self.add(m.title, "Started – PID: \(pid.map(String.init) ?? "?"), port: \(self.portText(again))", .ok)
                     final = again
                     return
                 }
@@ -322,9 +322,9 @@ final class Panel: ObservableObject {
 
             // Sikertelen indítás: ne próbálkozzon újra a végtelenségig, és mutassuk a hibát.
             Shell.run(Paths.brewBin, ["services", "stop", m.formula])
-            self.add(m.title, "Nem sikerült elindítani. A naplóban ez áll:", .error)
+            self.add(m.title, "Could not start. The log says:", .error)
             let errs = Panel.errorLines(m)
-            if errs.isEmpty { self.add(m.title, "  (nincs hibasor – nyisd meg: Naplók)", .error) }
+            if errs.isEmpty { self.add(m.title, "  (no error line found – open Logs)", .error) }
             for line in errs { self.add(m.title, "  " + line, .error) }
             final = Panel.probeAll()[m]
         }
@@ -360,16 +360,16 @@ final class Panel: ObservableObject {
                 Shell.run("/usr/bin/curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]).out
             }
             func check(_ ok: Bool, _ what: String) {
-                self.add("Teszt", (ok ? "✓ " : "✗ ") + what, ok ? .ok : .error)
+                self.add("Test", (ok ? "✓ " : "✗ ") + what, ok ? .ok : .error)
                 if !ok { failures.append(what) }
             }
 
             Thread.sleep(forTimeInterval: 1.5)
-            self.add("Teszt", "Önteszt indul")
+            self.add("Test", "Self-test starting")
 
             // 1. Leállítás
             onMain { self.stopAll() }; waitIdle()
-            check(!running(.apache) && !running(.mysql), "Összes leállítása: mindkét szerver leállt")
+            check(!running(.apache) && !running(.mysql), "Stop All: both servers stopped")
 
             // 2. Port-ütközés felismerése
             let port = onMain { self.apachePort }
@@ -385,25 +385,25 @@ final class Panel: ObservableObject {
                 let before = onMain { self.log.count }
                 onMain { self.toggle(.apache) }; waitIdle()
                 let msgs = onMain { self.log.suffix(from: before).map(\.text) }
-                check(!running(.apache) && msgs.contains { $0.contains("port már foglalt") },
-                      "Foglalt port (\(port)) esetén az Apache nem indul, és hibát jelez")
+                check(!running(.apache) && msgs.contains { $0.contains("already in use") },
+                      "With port \(port) taken, Apache does not start and reports an error")
             } else {
-                check(false, "Tesztport lefoglalása (\(port))")
+                check(false, "Reserving test port (\(port))")
             }
             close(fd)
 
             // 3. Indítás
             onMain { self.startAll() }; waitIdle()
-            check(running(.apache), "Apache elindult")
-            check(running(.mysql), "MySQL elindult")
+            check(running(.apache), "Apache started")
+            check(running(.mysql), "MySQL started")
 
             // 4. Elérhetőség
-            check(httpCode("http://localhost:\(port)/") == "200", "Weboldal válaszol (http://localhost:\(port)/)")
-            check(httpCode("http://localhost:\(port)/phpmyadmin/") == "200", "phpMyAdmin válaszol")
+            check(httpCode("http://localhost:\(port)/") == "200", "Website responds (http://localhost:\(port)/)")
+            check(httpCode("http://localhost:\(port)/phpmyadmin/") == "200", "phpMyAdmin responds")
             let db = Shell.run("\(Paths.brew)/bin/mariadb", ["-N", "-e", "SELECT 1"])
-            check(db.status == 0 && db.out.trimmingCharacters(in: .whitespacesAndNewlines) == "1", "MySQL lekérdezés működik")
+            check(db.status == 0 && db.out.trimmingCharacters(in: .whitespacesAndNewlines) == "1", "MySQL query works")
 
-            self.add("Teszt", failures.isEmpty ? "ÖNTESZT SIKERES" : "ÖNTESZT HIBÁS: \(failures.count) hiba",
+            self.add("Test", failures.isEmpty ? "SELF-TEST PASSED" : "SELF-TEST FAILED: \(failures.count) failures",
                      failures.isEmpty ? .ok : .error)
         }
     }
@@ -414,11 +414,11 @@ final class Panel: ObservableObject {
     // Admin / Config / Logs
     func admin(_ m: Module) {
         guard status[.apache]?.running == true else {
-            add(m.title, "Az Apache nem fut – előbb indítsd el.", .warn)
+            add(m.title, "Apache is not running – start it first.", .warn)
             return
         }
         if m == .mysql && status[.mysql]?.running != true {
-            add(m.title, "A MySQL nem fut – a phpMyAdmin csak akkor tud belépni, ha elindítod.", .warn)
+            add(m.title, "MySQL is not running – phpMyAdmin can only sign in once you start it.", .warn)
         }
         let path = m == .apache ? "/" : "/phpmyadmin/"
         Shell.open(["http://localhost:\(apachePort)\(path)"])
@@ -426,7 +426,7 @@ final class Panel: ObservableObject {
 
     func openFile(_ path: String?, module: String) {
         guard let path, FileManager.default.fileExists(atPath: path) else {
-            add(module, "A fájl nem található: \(path ?? "?")", .error)
+            add(module, "File not found: \(path ?? "?")", .error)
             return
         }
         Shell.open(["-t", path])
@@ -453,21 +453,21 @@ struct ContentView: View {
         .frame(minWidth: 840, minHeight: 420)
         .toolbar {
             ToolbarItem {
-                Button { openWindow(id: "db") } label: { Label("Adatbázis-kezelő", systemImage: "cylinder.split.1x2") }
+                Button { openWindow(id: "db") } label: { Label("Database Manager", systemImage: "cylinder.split.1x2") }
                     .labelStyle(.titleAndIcon)
-                    .help("A beépített adatbázis-kezelő megnyitása (⌘D)")
+                    .help("Open the built-in database manager (⌘D)")
             }
             ToolbarItemGroup {
-                Button { panel.openHtdocs() } label: { Label("Webmappa", systemImage: "folder") }
-                    .help("A webmappa megnyitása a Finderben (\(Paths.htdocs))")
-                Button { panel.openTerminal() } label: { Label("Terminál", systemImage: "terminal") }
-                    .help("Terminál megnyitása a webmappában")
+                Button { panel.openHtdocs() } label: { Label("Web Folder", systemImage: "folder") }
+                    .help("Open the web folder in Finder (\(Paths.htdocs))")
+                Button { panel.openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
+                    .help("Open Terminal in the web folder")
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { panel.startAll() } label: { Label("Összes indítása", systemImage: "play.fill") }
-                    .help("Minden leállított szerver indítása")
-                Button { panel.stopAll() } label: { Label("Összes leállítása", systemImage: "stop.fill") }
-                    .help("Minden futó szerver leállítása")
+                Button { panel.startAll() } label: { Label("Start All", systemImage: "play.fill") }
+                    .help("Start every stopped server")
+                Button { panel.stopAll() } label: { Label("Stop All", systemImage: "stop.fill") }
+                    .help("Stop every running server")
             }
         }
         .onAppear {
@@ -481,8 +481,8 @@ struct ContentView: View {
 struct StatusBadge: View {
     let title: String
     let on: Bool
-    var onText = "Fut"
-    var offText = "Leállítva"
+    var onText = "Running"
+    var offText = "Stopped"
 
     var body: some View {
         HStack(spacing: 9) {
@@ -507,8 +507,8 @@ struct ModuleTable: View {
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
             GridRow {
-                Text("Modul"); Text("PID"); Text("Port")
-                Text("Műveletek").gridCellColumns(4)
+                Text("Module"); Text("PID"); Text("Port")
+                Text("Actions").gridCellColumns(4)
             }
             .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
 
@@ -517,13 +517,13 @@ struct ModuleTable: View {
             ForEach(Module.allCases) { m in row(m) }
 
             GridRow {
-                StatusBadge(title: "PHP", on: panel.phpLinked, onText: "Bekötve", offText: "Nincs bekötve")
+                StatusBadge(title: "PHP", on: panel.phpLinked, onText: "Linked", offText: "Not linked")
                 Text("–").foregroundStyle(.secondary)
                 Text("–").foregroundStyle(.secondary)
-                Text("\(panel.phpVersion) · az Apache-on keresztül fut")
+                Text("\(panel.phpVersion) · runs through Apache")
                     .font(.callout).foregroundStyle(.secondary).gridCellColumns(2)
-                Button("Beállítások") { panel.openFile(panel.phpIni, module: "PHP") }
-                    .help("php.ini megnyitása")
+                Button("Config") { panel.openFile(panel.phpIni, module: "PHP") }
+                    .help("Open php.ini")
                 Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
             }
         }
@@ -543,17 +543,17 @@ struct ModuleTable: View {
                 if panel.busy.contains(m) {
                     ProgressView().controlSize(.small).frame(width: 88)
                 } else if s.running {
-                    Button { panel.toggle(m) } label: { Text("Leállítás").frame(width: 68) }
+                    Button { panel.toggle(m) } label: { Text("Stop").frame(width: 68) }
                 } else {
-                    Button { panel.toggle(m) } label: { Text("Indítás").frame(width: 68) }
+                    Button { panel.toggle(m) } label: { Text("Start").frame(width: 68) }
                         .buttonStyle(.borderedProminent).disabled(!s.installed)
                 }
             }
 
-            Button { panel.admin(m) } label: { Text(m == .apache ? "Webhely" : "phpMyAdmin").frame(width: 82) }
-                .help(m == .apache ? "A helyi webhely megnyitása a böngészőben" : "A phpMyAdmin megnyitása a böngészőben")
+            Button { panel.admin(m) } label: { Text(m == .apache ? "Website" : "phpMyAdmin").frame(width: 82) }
+                .help(m == .apache ? "Open the local website in the browser" : "Open phpMyAdmin in the browser")
 
-            Menu("Beállítások") {
+            Menu("Config") {
                 if m == .apache {
                     Button("httpd.conf") { panel.openFile(Paths.httpdConf, module: m.title) }
                     Button("httpd-vhosts.conf") { panel.openFile(Paths.vhostsConf, module: m.title) }
@@ -565,12 +565,12 @@ struct ModuleTable: View {
             }
             .fixedSize()
 
-            Menu("Naplók") {
+            Menu("Logs") {
                 if m == .apache {
                     Button("error_log") { panel.openFile(Paths.apacheErrorLog, module: m.title) }
                     Button("access_log") { panel.openFile(Paths.apacheAccessLog, module: m.title) }
                 } else {
-                    Button("MariaDB hibanapló (.err)") { panel.openFile(Paths.mysqlErrorLog, module: m.title) }
+                    Button("MariaDB error log (.err)") { panel.openFile(Paths.mysqlErrorLog, module: m.title) }
                 }
             }
             .fixedSize()
@@ -635,46 +635,46 @@ struct AppCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}
 
-        CommandMenu("Szerver") {
-            Button("Összes indítása") { panel.startAll() }.keyboardShortcut("i", modifiers: [.command, .shift])
-            Button("Összes leállítása") { panel.stopAll() }.keyboardShortcut("l", modifiers: [.command, .shift])
+        CommandMenu("Server") {
+            Button("Start All") { panel.startAll() }.keyboardShortcut("i", modifiers: [.command, .shift])
+            Button("Stop All") { panel.stopAll() }.keyboardShortcut("l", modifiers: [.command, .shift])
             Divider()
             ForEach(Module.allCases) { m in
-                Button("\(m.title) \(panel.status[m]?.running == true ? "leállítása" : "indítása")") { panel.toggle(m) }
+                Button("\(panel.status[m]?.running == true ? "Stop" : "Start") \(m.title)") { panel.toggle(m) }
                     .disabled(panel.busy.contains(m))
             }
             Divider()
-            Button("Webhely megnyitása") { panel.admin(.apache) }
-            Button("phpMyAdmin megnyitása") { panel.admin(.mysql) }
-            Button("Webmappa megnyitása") { panel.openHtdocs() }.keyboardShortcut("o", modifiers: [.command, .shift])
-            Button("Terminál megnyitása") { panel.openTerminal() }
+            Button("Open Website") { panel.admin(.apache) }
+            Button("Open phpMyAdmin") { panel.admin(.mysql) }
+            Button("Open Web Folder") { panel.openHtdocs() }.keyboardShortcut("o", modifiers: [.command, .shift])
+            Button("Open Terminal") { panel.openTerminal() }
             Divider()
-            Menu("Beállítófájlok") {
+            Menu("Config Files") {
                 Button("httpd.conf") { panel.openFile(Paths.httpdConf, module: "Apache") }
                 Button("httpd-vhosts.conf") { panel.openFile(Paths.vhostsConf, module: "Apache") }
                 Button("php.ini") { panel.openFile(panel.phpIni, module: "PHP") }
                 Button("my.cnf") { panel.openFile(Paths.myCnf, module: "MySQL") }
                 Button("phpMyAdmin (config.inc.php)") { panel.openFile(Paths.pmaConf, module: "MySQL") }
             }
-            Menu("Naplók") {
+            Menu("Logs") {
                 Button("Apache error_log") { panel.openFile(Paths.apacheErrorLog, module: "Apache") }
                 Button("Apache access_log") { panel.openFile(Paths.apacheAccessLog, module: "Apache") }
-                Button("MariaDB hibanapló") { panel.openFile(Paths.mysqlErrorLog, module: "MySQL") }
+                Button("MariaDB Error Log") { panel.openFile(Paths.mysqlErrorLog, module: "MySQL") }
             }
         }
 
-        CommandMenu("Adatbázis") {
-            Button("Adatbázis-kezelő megnyitása") { openWindow(id: "db") }.keyboardShortcut("d", modifiers: .command)
+        CommandMenu("Database") {
+            Button("Open Database Manager") { openWindow(id: "db") }.keyboardShortcut("d", modifiers: .command)
             Divider()
-            Button("Frissítés") { db.reloadAll() }.keyboardShortcut("r", modifiers: [.command, .shift])
-            Button("Új adatbázis…") { openWindow(id: "db"); db.sheet = .newDatabase }
-            Button("Új tábla…") { openWindow(id: "db"); db.sheet = .newTable }.disabled(db.currentDB == nil)
+            Button("Refresh") { db.reloadAll() }.keyboardShortcut("r", modifiers: [.command, .shift])
+            Button("New Database…") { openWindow(id: "db"); db.sheet = .newDatabase }
+            Button("New Table…") { openWindow(id: "db"); db.sheet = .newTable }.disabled(db.currentDB == nil)
             Divider()
-            Button("Exportálás…") { if let d = db.currentDB { db.export(db: d, table: db.currentTable) } }
+            Button("Export…") { if let d = db.currentDB { db.export(db: d, table: db.currentTable) } }
                 .keyboardShortcut("e", modifiers: .command).disabled(db.currentDB == nil)
-            Button("Importálás…") { db.importSQL(into: db.currentDB) }
+            Button("Import…") { db.importSQL(into: db.currentDB) }
             Divider()
-            Button("Lekérdezés futtatása") { db.tab = .query; db.runQuery() }
+            Button("Run Query") { db.tab = .query; db.runQuery() }
                 .keyboardShortcut("r", modifiers: .command).disabled(db.queryText.trimmed.isEmpty)
         }
     }
@@ -694,7 +694,7 @@ struct SzerverpanelApp: App {
         .windowResizability(.contentMinSize)
         .commands { AppCommands(panel: panel, db: database) }
 
-        Window("Adatbázis-kezelő", id: "db") {
+        Window("Database Manager", id: "db") {
             DatabaseWindow().environmentObject(database)
         }
         .defaultSize(width: 1120, height: 720)

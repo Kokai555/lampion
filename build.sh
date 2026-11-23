@@ -25,7 +25,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleDevelopmentRegion</key><string>hu</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -36,4 +36,4 @@ EOF
 
 codesign --force --sign - "$APP"
 ditto "$APP" /Applications/Szerverpanel.app
-echo "Kész: /Applications/Szerverpanel.app"
+echo "Installed: /Applications/Szerverpanel.app"
