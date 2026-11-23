@@ -904,6 +904,8 @@ struct SQLEditor: NSViewRepresentable {
     var completions: (_ prefix: String, _ qualifier: String?) -> [String]
 
     static let completeTest = Notification.Name("szerverpanel.completeTest")
+    /// Az éppen látható javaslatok (önteszthez).
+    static var shownSuggestions: [String] = []
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -936,7 +938,7 @@ struct SQLEditor: NSViewRepresentable {
         sv.drawsBackground = false
         sv.borderType = .noBorder
         context.coordinator.textView = tv
-        NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.runCompleteTest),
+        NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.runCompleteTest(_:)),
                                                name: SQLEditor.completeTest, object: nil)
         return sv
     }
@@ -949,12 +951,14 @@ struct SQLEditor: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: SQLEditor
         weak var textView: SQLTextView?
+        private let suggestions = SuggestionPanel()
+        private var range = NSRange(location: 0, length: 0)
+        private var suppressNext = false
 
-        init(_ parent: SQLEditor) { self.parent = parent }
-
-        func textDidChange(_ note: Notification) {
-            guard let tv = textView, parent.text != tv.string else { return }
-            parent.text = tv.string
+        init(_ parent: SQLEditor) {
+            self.parent = parent
+            super.init()
+            suggestions.onPick = { [weak self] word in self?.accept(word) }
         }
 
         private func candidates(_ tv: SQLTextView, _ range: NSRange) -> [String] {
@@ -962,73 +966,226 @@ struct SQLEditor: NSViewRepresentable {
             return parent.completions(prefix, tv.qualifier(before: range))
         }
 
-        /// Tab: egy találatnál azonnal beírja, többnél listát nyit; szó nélkül sima tabulátor.
-        func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-            guard selector == #selector(NSResponder.insertTab(_:)), let tv = textView as? SQLTextView,
-                  tv.selectedRange().length == 0 else { return false }
-            let range = tv.rangeForUserCompletion
-            if range.length == 0 && tv.qualifier(before: range) == nil { return false }
-            let list = candidates(tv, range)
-            if list.count == 1 {
-                tv.insertText(list[0], replacementRange: range)
-            } else if list.count > 1 {
-                showMenu(list, for: range, in: tv)
-            } else {
-                NSSound.beep()
-            }
-            return true
+        /// Javaslatok megjelenítése a kurzor alatt; `force`: Tabra, akkor is, ha még nincs begépelt betű.
+        private func refresh(_ tv: SQLTextView, force: Bool = false) {
+            guard tv.selectedRange().length == 0 else { hide(); return }
+            let r = tv.rangeForUserCompletion
+            let hasQualifier = tv.qualifier(before: r) != nil
+            guard r.length > 0 || hasQualifier || force else { hide(); return }
+            let list = candidates(tv, r)
+            guard !list.isEmpty, let window = tv.window else { hide(); return }
+            range = r
+            let caret = tv.firstRect(forCharacterRange: NSRange(location: r.location, length: 0), actualRange: nil)
+            suggestions.show(list, below: NSPoint(x: caret.minX - 6, y: caret.minY - 3), parent: window)
+            SQLEditor.shownSuggestions = suggestions.items
         }
 
-        func textView(_ textView: NSTextView, completions words: [String], forPartialWordRange charRange: NSRange,
-                      indexOfSelectedItem index: UnsafeMutablePointer<Int>?) -> [String] {
-            guard let tv = textView as? SQLTextView else { return [] }
-            index?.pointee = -1
-            return candidates(tv, charRange)
+        private func hide() {
+            suggestions.hide()
+            SQLEditor.shownSuggestions = []
         }
 
-        private var pendingRange = NSRange(location: 0, length: 0)
-        private weak var openMenu: NSMenu?
-
-        /// Javaslatlista a kurzor alatt (nyilak + Enter választ, Esc bezár, betűre ugrik).
-        private func showMenu(_ list: [String], for range: NSRange, in tv: SQLTextView) {
-            pendingRange = range
-            let menu = NSMenu()
-            menu.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-            for word in list.prefix(25) {
-                let item = NSMenuItem(title: word, action: #selector(pick(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = word
-                menu.addItem(item)
-            }
-            var point = NSPoint(x: 8, y: 20)
-            if let window = tv.window {
-                let screenRect = tv.firstRect(forCharacterRange: NSRange(location: range.location, length: 0), actualRange: nil)
-                let inWindow = window.convertPoint(fromScreen: NSPoint(x: screenRect.minX, y: screenRect.minY))
-                point = tv.convert(inWindow, from: nil)
-                point.y += 4
-            }
-            openMenu = menu
-            menu.popUp(positioning: nil, at: point, in: tv)
-        }
-
-        @objc private func pick(_ item: NSMenuItem) {
-            guard let tv = textView, let word = item.representedObject as? String else { return }
-            tv.insertText(word, replacementRange: pendingRange)
-        }
-
-        /// Csak önteszthez: a kurzort a szöveg végére teszi, és Tabot „nyom”; a listát 3 mp után bezárja.
-        @objc func runCompleteTest() {
+        private func accept(_ word: String) {
             guard let tv = textView else { return }
-            NSApp.activate(ignoringOtherApps: true)
-            tv.window?.makeKeyAndOrderFront(nil)
-            let timer = Timer(timeInterval: 3, repeats: false) { [weak self] _ in self?.openMenu?.cancelTracking() }
-            RunLoop.main.add(timer, forMode: .common)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                tv.window?.makeFirstResponder(tv)
-                tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+            suppressNext = true
+            tv.insertText(word, replacementRange: range)
+            hide()
+        }
+
+        func textDidChange(_ note: Notification) {
+            guard let tv = textView else { return }
+            if parent.text != tv.string { parent.text = tv.string }
+            if suppressNext { suppressNext = false; hide() } else { refresh(tv) }
+        }
+
+        /// Ha a kurzor gépelés nélkül mozdul el (kattintás, nyilak), a javaslatok eltűnnek.
+        func textViewDidChangeSelection(_ note: Notification) {
+            DispatchQueue.main.async {
+                guard self.suggestions.isVisible, let tv = self.textView else { return }
+                if tv.selectedRange().length != 0 || tv.rangeForUserCompletion.location != self.range.location {
+                    self.hide()
+                } else {
+                    self.refresh(tv)
+                }
+            }
+        }
+
+        func textDidEndEditing(_ note: Notification) { hide() }
+
+        func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard let tv = textView as? SQLTextView else { return false }
+            if suggestions.isVisible {
+                switch selector {
+                case #selector(NSResponder.moveDown(_:)): suggestions.move(1); return true
+                case #selector(NSResponder.moveUp(_:)): suggestions.move(-1); return true
+                case #selector(NSResponder.cancelOperation(_:)): hide(); return true
+                case #selector(NSResponder.insertTab(_:)):
+                    if let word = suggestions.selected { accept(word) }
+                    return true
+                case #selector(NSResponder.insertNewline(_:)):
+                    // Enter csak akkor fogad el, ha a nyilakkal kiválasztottál valamit.
+                    if suggestions.navigated, let word = suggestions.selected { accept(word); return true }
+                    hide()
+                    return false
+                default: return false
+                }
+            }
+            // Zárt listánál a Tab megnyitja a javaslatokat; egyetlen találatot azonnal beír.
+            if selector == #selector(NSResponder.insertTab(_:)), tv.selectedRange().length == 0 {
+                let r = tv.rangeForUserCompletion
+                if r.length == 0 && tv.qualifier(before: r) == nil { return false }
+                let list = candidates(tv, r)
+                if list.count == 1 {
+                    range = r
+                    accept(list[0])
+                } else if list.isEmpty {
+                    NSSound.beep()
+                } else {
+                    refresh(tv, force: true)
+                }
+                return true
+            }
+            return false
+        }
+
+        /// Csak önteszthez. Szöveg érkezik: „begépeli”; különben a kurzort a végére teszi, és Tabot „nyom”.
+        @objc func runCompleteTest(_ note: Notification) {
+            guard let tv = textView else { return }
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+            if let typed = note.object as? String {
+                tv.insertText(typed, replacementRange: tv.selectedRange())
+            } else {
                 tv.doCommand(by: #selector(NSResponder.insertTab(_:)))
             }
         }
+    }
+}
+
+/// Lebegő javaslatlista a kurzor alatt. Nem veszi el a fókuszt, így a gépelés folytatható.
+final class SuggestionPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    private final class RowView: NSTableRowView {
+        override var isEmphasized: Bool { get { true } set {} }
+    }
+
+    private let panel: NSPanel
+    private let table = NSTableView()
+    private(set) var items: [String] = []
+    private(set) var navigated = false
+    var onPick: ((String) -> Void)?
+    var isVisible: Bool { panel.isVisible }
+    var selected: String? {
+        let r = table.selectedRow
+        return r >= 0 && r < items.count ? items[r] : nil
+    }
+
+    override init() {
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 220, height: 120),
+                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        super.init()
+        panel.isFloatingPanel = true
+        panel.level = .popUpMenu
+        panel.hasShadow = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hidesOnDeactivate = false
+
+        let effect = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 220, height: 120))
+        effect.material = .menu
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 8
+        effect.layer?.masksToBounds = true
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("word"))
+        column.resizingMask = .autoresizingMask
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.backgroundColor = .clear
+        table.rowHeight = 20
+        table.style = .plain
+        table.intercellSpacing = NSSize(width: 0, height: 0)
+        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+        table.refusesFirstResponder = true
+        table.dataSource = self
+        table.delegate = self
+        table.target = self
+        table.action = #selector(clicked)
+
+        let scroll = NSScrollView(frame: effect.bounds.insetBy(dx: 0, dy: 4))
+        scroll.autoresizingMask = [.width, .height]
+        scroll.documentView = table
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .overlay
+        effect.addSubview(scroll)
+        panel.contentView = effect
+    }
+
+    /// `below`: a lista bal felső sarka képernyő-koordinátában.
+    func show(_ list: [String], below point: NSPoint, parent: NSWindow) {
+        items = Array(list.prefix(40))
+        navigated = false
+        let height = CGFloat(min(items.count, 8)) * 20 + 8
+        let width = min(460, max(180, CGFloat(items.map(\.count).max() ?? 10) * 7.3 + 40))
+        panel.setFrame(NSRect(x: point.x, y: point.y - height, width: width, height: height), display: true)
+        table.reloadData()
+        table.sizeLastColumnToFit()
+        table.selectRowIndexes([0], byExtendingSelection: false)
+        table.scrollRowToVisible(0)
+        if panel.parent !== parent {
+            panel.parent?.removeChildWindow(panel)
+            parent.addChildWindow(panel, ordered: .above)
+        }
+        panel.orderFront(nil)
+    }
+
+    func hide() {
+        guard panel.isVisible else { return }
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
+        items = []
+    }
+
+    func move(_ delta: Int) {
+        guard !items.isEmpty else { return }
+        let row = max(0, min(items.count - 1, table.selectedRow + delta))
+        table.selectRowIndexes([row], byExtendingSelection: false)
+        table.scrollRowToVisible(row)
+        navigated = true
+    }
+
+    @objc private func clicked() {
+        let row = table.clickedRow
+        if row >= 0, row < items.count { onPick?(items[row]) }
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { RowView() }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let ident = NSUserInterfaceItemIdentifier("suggestion")
+        let cell: NSTableCellView
+        if let reused = tableView.makeView(withIdentifier: ident, owner: nil) as? NSTableCellView {
+            cell = reused
+        } else {
+            cell = NSTableCellView()
+            cell.identifier = ident
+            let label = NSTextField(labelWithString: "")
+            label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            label.lineBreakMode = .byTruncatingTail
+            label.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(label)
+            cell.textField = label
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
+                label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+        }
+        cell.textField?.stringValue = row < items.count ? items[row] : ""
+        return cell
     }
 }
 
@@ -1339,7 +1496,7 @@ struct QueryView: View {
                     Button { m.runQuery() } label: { Label("Run", systemImage: "play.fill") }
                         .buttonStyle(.borderedProminent)
                         .help("Run (⌘R)")
-                    Text("Database: \(m.currentDB ?? "none selected")  ·  Tab: autocomplete").font(.callout).foregroundStyle(.secondary)
+                    Text("Database: \(m.currentDB ?? "none selected")  ·  Tab accepts a suggestion").font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     if m.queryResults.count > 1 {
                         Picker("", selection: $m.shownResult) {
@@ -1599,7 +1756,20 @@ extension DBModel {
             check(onMain { self.queryText } == "SELECT * FROM termekek", "Tab in the editor inserts the single match")
             onMain { self.queryText = "SELECT * FROM termekek WHERE termekek." }
             Thread.sleep(forTimeInterval: 0.5)
-            DispatchQueue.main.async { NotificationCenter.default.post(name: SQLEditor.completeTest, object: nil) }
+            onMain { NotificationCenter.default.post(name: SQLEditor.completeTest, object: nil) }
+            Thread.sleep(forTimeInterval: 0.4)
+            check(onMain { SQLEditor.shownSuggestions } == ["id", "nev", "ar"], "Tab after table. opens the column list")
+            onMain { NotificationCenter.default.post(name: SQLEditor.completeTest, object: "n") }
+            Thread.sleep(forTimeInterval: 0.4)
+            check(onMain { SQLEditor.shownSuggestions } == ["nev"], "Typing narrows the open list")
+            onMain { NotificationCenter.default.post(name: SQLEditor.completeTest, object: nil) }
+            Thread.sleep(forTimeInterval: 0.4)
+            check(onMain { self.queryText.hasSuffix("termekek.nev") && SQLEditor.shownSuggestions.isEmpty }, "Tab accepts the suggestion and closes the list")
+            onMain { self.queryText = "" }
+            Thread.sleep(forTimeInterval: 0.5)
+            onMain { NotificationCenter.default.post(name: SQLEditor.completeTest, object: "cre") }
+            Thread.sleep(forTimeInterval: 0.4)
+            check(onMain { SQLEditor.shownSuggestions.first } == "create", "Suggestions appear while typing, without Tab")
             out("PAUSE")
             Thread.sleep(forTimeInterval: 5)
             onMain { self.queryText = "SELECT * FROM termekek;"; self.runQuery(); self.tab = .data; self.loadData() }; wait()
