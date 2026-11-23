@@ -40,5 +40,5 @@ enum DBSheet: String, Identifiable {
 }
 
 enum DBTab: String, Hashable {
-    case tables = "Tables", data = "Data", structure = "Structure", query = "Query"
+    case tables = "Tables", designer = "Designer", data = "Data", structure = "Structure", query = "Query"
 }

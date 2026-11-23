@@ -134,12 +134,20 @@ enum Setup {
         if let pma = try? String(contentsOfFile: Paths.pmaConf, encoding: .utf8) {
             let hasGoodSecret = pma.range(of: "sodium_hex2bin\\('[0-9a-f]{64}'\\)", options: .regularExpression) != nil
             if !hasGoodSecret {
-                let newPma = configuredPhpMyAdmin(pma)
+                // First-time configuration: also let phpMyAdmin sign in by itself, like other local stacks do.
+                let newPma = PhpMyAdminConfig.setAutoLogin(true, user: NSUserName(), in: configuredPhpMyAdmin(pma))
                 if newPma != pma {
                     try newPma.write(toFile: Paths.pmaConf, atomically: true, encoding: .utf8)
-                    changes.append("Generated a cookie secret for phpMyAdmin")
+                    changes.append("Configured phpMyAdmin to sign in automatically as \(NSUserName())")
                 }
             }
+        }
+
+        // PHP logs in UTC and warns about date() until a time zone is set: use the Mac's.
+        if let ini = PHPConfig.iniPathCached, var php = try? PHPConfig.load(from: ini), php.timezone.isEmpty {
+            php.timezone = TimeZone.current.identifier
+            try PHPConfig.save(php, to: ini)
+            changes.append("Set PHP's time zone to \(php.timezone)")
         }
 
         try fm.createDirectory(atPath: Paths.htdocs, withIntermediateDirectories: true)
@@ -246,8 +254,13 @@ extension Panel {
                 self.reloadPHP()
                 self.refresh()
                 // After a fresh install, bring the servers up so the panel is ready to use.
+                // A fresh install keeps everything in ~/Lampion from the start, then starts the servers.
                 if started && !missing.isEmpty {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.startAll() }
+                    if !Paths.usesHome && !FileManager.default.fileExists(atPath: Paths.homeDatabases) {
+                        self.moveToLampionHome(startAfter: true)
+                    } else {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.startAll() }
+                    }
                 }
             }
         }

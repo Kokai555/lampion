@@ -37,6 +37,9 @@ final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
 
     @Published var state: State = .idle
 
+    /// True while the app quits to install an update (the servers are left running).
+    static var isRelaunching = false
+
     private var session: URLSession?
     private var downloadTask: URLSessionDownloadTask?
     private var pending: (release: Release, target: String)?
@@ -242,7 +245,7 @@ final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
             try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
             Shell.run("/bin/bash", ["-c", "nohup /bin/bash \(Updater.quoted(scriptPath)) >/dev/null 2>&1 &"])
             // A short pause so the "Installing" state is readable before the app closes.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { NSApp.terminate(nil) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { Updater.isRelaunching = true; NSApp.terminate(nil) }
         } catch {
             Shell.run("/usr/bin/hdiutil", ["detach", mount, "-quiet"])
             try? fm.removeItem(atPath: work)

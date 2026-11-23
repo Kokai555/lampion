@@ -9,16 +9,40 @@ final class Panel: ObservableObject {
     @Published var phpIni: String?
     @Published var phpLinked = false
     @Published var setupState: SetupState = .ready
+    @Published var pane: Pane = .overview
+    @Published var logSource: LogSource = .activity
+    /// Settings pages with edits that are not saved yet, and those edits (saved, draft), kept across pane switches.
+    @Published private(set) var unsaved: Set<Pane> = []
+    private var drafts: [Pane: Any] = [:]
+    @Published var versions: [Module: String] = [:]
+    @Published var documentRoot = Paths.htdocs
+    @Published var ports: [Module: Int] = [.apache: 8080, .mysql: 3306]
+    /// Where the logs and the databases are (they move to ~/Lampion); views read Paths, this triggers their refresh.
+    @Published var locations = Locations()
+    /// True while everything is being moved to ~/Lampion.
+    @Published var movingHome = false
 
-    private let actions = DispatchQueue(label: "lampion.actions")   // műveletek sorban
+    /// The running panel, for the app delegate (stop servers on quit).
+    static weak var shared: Panel?
+
+    let actions = DispatchQueue(label: "lampion.actions")   // műveletek sorban
     private var timer: Timer?
     private var refreshing = false
-    private var generation = 0
+    var generation = 0
+    private var refreshCount = 0
+    private static var rootDefaultChecked = false
 
     init() {
+        Panel.shared = self
         add("Panel", "Lampion started")
-        add("Panel", "Homebrew: \(Paths.brew)  ·  htdocs: \(Paths.htdocs)")
-        DispatchQueue.global(qos: .utility).async { self.loadPHP() }
+        add("Panel", "Homebrew: \(Paths.brew)  ·  web folder: \(ApacheConfig.documentRoot())")
+        DispatchQueue.global(qos: .utility).async {
+            self.loadPHP(); self.loadVersions()
+            if !CommandLine.arguments.contains("--selftest") {
+                PhpMyAdminConfig.enableByDefault { self.add("MySQL", $0) }
+            }
+        }
+        reloadConfig()
         refresh(initial: true)
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refresh() }
         if CommandLine.arguments.contains("--selftest") { runSelfTest() }
@@ -46,9 +70,31 @@ final class Panel: ObservableObject {
         }
         let append = {
             self.log.append(entry)
-            if self.log.count > 500 { self.log.removeFirst(self.log.count - 500) }
+            if self.log.count > 2000 { self.log.removeFirst(self.log.count - 2000) }
         }
         Thread.isMainThread ? append() : DispatchQueue.main.async(execute: append)
+    }
+
+    func clearLog() { log.removeAll() }
+
+    func keepDraft<T: Equatable>(_ pane: Pane, saved: T, draft: T) {
+        if saved == draft {
+            drafts[pane] = nil
+            if unsaved.contains(pane) { unsaved.remove(pane) }
+        } else {
+            drafts[pane] = (saved, draft)
+            if !unsaved.contains(pane) { unsaved.insert(pane) }
+        }
+    }
+
+    func storedDraft<T>(_ pane: Pane, as type: T.Type) -> (saved: T, draft: T)? {
+        drafts[pane] as? (T, T)
+    }
+
+    /// Switches to the Logs pane showing the given log.
+    func show(_ source: LogSource) {
+        logSource = source
+        pane = .logs
     }
 
     private func addOutput(_ module: String, _ out: String, _ level: LogEntry.Level = .error) {
@@ -79,27 +125,47 @@ final class Panel: ObservableObject {
         }
     }
 
-    // Beállított portok
-    var apachePort: Int {
-        let conf = (try? String(contentsOfFile: Paths.httpdConf, encoding: .utf8)) ?? ""
-        for line in conf.split(separator: "\n") {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            guard t.hasPrefix("Listen ") else { continue }
-            if let p = Int(t.dropFirst(7).split(separator: ":").last ?? "") { return p }
-        }
-        return 80
-    }
-
-    var mysqlPort: Int {
-        let conf = (try? String(contentsOfFile: Paths.myCnf, encoding: .utf8)) ?? ""
-        for line in conf.split(separator: "\n") {
-            let t = line.replacingOccurrences(of: " ", with: "")
-            if t.hasPrefix("port="), let p = Int(t.dropFirst(5)) { return p }
-        }
-        return 3306
-    }
+    // Configured ports and web folder (read from the config files, cached for the views)
+    var apachePort: Int { ports[.apache] ?? 8080 }
+    var mysqlPort: Int { ports[.mysql] ?? 3306 }
 
     func configuredPort(_ m: Module) -> Int { m == .apache ? apachePort : mysqlPort }
+
+    /// Reads the port from the configuration files now (the files may have been edited by hand).
+    static func freshPort(_ m: Module) -> Int {
+        m == .apache ? ((try? ApacheConfig.load().port) ?? 8080) : MariaDBConfig.effectivePort()
+    }
+
+    /// Re-reads the ports and the web folder after the configuration changes.
+    func reloadConfig() {
+        DispatchQueue.global(qos: .utility).async {
+            let apache = (try? ApacheConfig.load())
+            let mysql = MariaDBConfig.effectivePort()
+            let locations = Locations.refresh()
+            DispatchQueue.main.async {
+                if self.locations != locations { self.locations = locations }
+                // Assign only real changes: this runs every 10 s, and each publish redraws the whole window.
+                if let apache {
+                    if self.ports[.apache] != apache.port { self.ports[.apache] = apache.port }
+                    if self.documentRoot != apache.documentRoot { self.documentRoot = apache.documentRoot }
+                }
+                if self.ports[.mysql] != mysql { self.ports[.mysql] = mysql }
+            }
+        }
+    }
+
+    private func loadVersions() {
+        let apache = Shell.run(Paths.httpd, ["-v"]).out
+        let maria = Shell.run(Paths.mariadbd, ["--version"]).out
+        var v: [Module: String] = [:]
+        if let r = apache.range(of: "Apache/") {
+            v[.apache] = String(apache[r.upperBound...].prefix { !$0.isWhitespace })
+        }
+        if let r = maria.range(of: "Ver ") {
+            v[.mysql] = String(maria[r.upperBound...].prefix { !$0.isWhitespace }).replacingOccurrences(of: "-MariaDB", with: "")
+        }
+        DispatchQueue.main.async { self.versions = v }
+    }
 
     // Állapot lekérdezése
     static func probeAll() -> [Module: ModuleStatus] {
@@ -149,9 +215,20 @@ final class Panel: ObservableObject {
             DispatchQueue.main.async {
                 if gen != self.generation { self.refreshing = false; return }
                 let old = self.status
-                self.status = new
+                if new != old { self.status = new }
+                self.refreshCount += 1
+                if new[.mysql]?.running == true && !Panel.rootDefaultChecked && !CommandLine.arguments.contains("--selftest") {
+                    Panel.rootDefaultChecked = true
+                    DispatchQueue.global(qos: .utility).async { MariaDBAccess.enableByDefault { self.add("MySQL", $0) } }
+                }
+                if self.refreshCount % 5 == 0 { self.reloadConfig() }   // pick up hand edits of the config files
                 self.refreshing = false
                 self.evaluateSetup()
+                if initial && UserDefaults.standard.bool(forKey: Prefs.startServersOnLaunch)
+                    && !CommandLine.arguments.contains("--selftest") && self.setupState == .ready {
+                    self.add("Panel", "Starting the servers (General → Start servers when Lampion opens)")
+                    self.startAll()
+                }
                 for m in Module.allCases {
                     guard let n = new[m] else { continue }
                     if initial {
@@ -186,9 +263,9 @@ final class Panel: ObservableObject {
         let wasRunning = current.running
         busy.insert(m)
         add(m.title, wasRunning ? "Stopping…" : "Starting…")
-        let port = configuredPort(m)
 
         actions.async {
+            let port = Panel.freshPort(m)
             var final: ModuleStatus?
             defer {
                 DispatchQueue.main.async {
@@ -222,39 +299,89 @@ final class Panel: ObservableObject {
                 return
             }
 
-            var s = ModuleStatus()
-            for _ in 0..<24 {
-                s = Panel.probeAll()[m] ?? ModuleStatus()
-                if wasRunning ? !s.running : (s.running && !s.ports.isEmpty) { break }
-                Thread.sleep(forTimeInterval: 0.5)
-            }
-
             if wasRunning {
+                var s = ModuleStatus()
+                for _ in 0..<24 {
+                    s = Panel.probeAll()[m] ?? ModuleStatus()
+                    if !s.running { break }
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
                 s.running ? self.add(m.title, "Could not stop", .error)
                           : self.add(m.title, "Stopped", .ok)
                 final = s
                 return
             }
+            final = self.awaitStart(m, verb: "Started")
+        }
+    }
 
-            // Stabilitás: a szervernek pár másodperc múlva is ugyanazzal a PID-del kell futnia.
-            if s.running && !s.ports.isEmpty {
-                let pid = s.pids.first
-                Thread.sleep(forTimeInterval: 2.5)
-                let again = Panel.probeAll()[m] ?? ModuleStatus()
-                if again.running && !again.ports.isEmpty && again.pids.first == pid {
-                    self.add(m.title, "Started – PID: \(pid.map(String.init) ?? "?"), port: \(self.portText(again))", .ok)
-                    final = again
+    /// Waits until a server that was just started is listening and stays up. On failure it is stopped
+    /// (so launchd does not keep restarting it) and the error lines from its log are shown.
+    private func awaitStart(_ m: Module, verb: String) -> ModuleStatus? {
+        var s = ModuleStatus()
+        for _ in 0..<24 {
+            s = Panel.probeAll()[m] ?? ModuleStatus()
+            if s.running && !s.ports.isEmpty { break }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+
+        // Stabilitás: a szervernek pár másodperc múlva is ugyanazzal a PID-del kell futnia.
+        if s.running && !s.ports.isEmpty {
+            let pid = s.pids.first
+            Thread.sleep(forTimeInterval: 2.5)
+            let again = Panel.probeAll()[m] ?? ModuleStatus()
+            if again.running && !again.ports.isEmpty && again.pids.first == pid {
+                add(m.title, "\(verb) – PID: \(pid.map(String.init) ?? "?"), port: \(portText(again))", .ok)
+                return again
+            }
+        }
+
+        // Sikertelen indítás: ne próbálkozzon újra a végtelenségig, és mutassuk a hibát.
+        Shell.run(Paths.brewBin, ["services", "stop", m.formula])
+        add(m.title, "Could not start. The log says:", .error)
+        let errs = Panel.errorLines(m)
+        if errs.isEmpty { add(m.title, "  (no error line found – see Logs)", .error) }
+        for line in errs { add(m.title, "  " + line, .error) }
+        return Panel.probeAll()[m]
+    }
+
+    /// Restarts a running server so it picks up configuration changes.
+    func restart(_ m: Module) {
+        guard !busy.contains(m), status[m]?.running == true else { return }
+        busy.insert(m)
+        add(m.title, "Restarting to apply the new settings…")
+        actions.async {
+            var final: ModuleStatus?
+            defer {
+                DispatchQueue.main.async {
+                    if let final { self.status[m] = final }
+                    self.generation += 1
+                    self.busy.remove(m)
+                }
+            }
+            if m == .apache {
+                let t = Shell.run(Paths.httpd, ["-t"])
+                if t.status != 0 {
+                    self.add(m.title, "Invalid configuration (httpd.conf), not restarting:", .error)
+                    self.addOutput(m.title, t.out)
                     return
                 }
             }
-
-            // Sikertelen indítás: ne próbálkozzon újra a végtelenségig, és mutassuk a hibát.
-            Shell.run(Paths.brewBin, ["services", "stop", m.formula])
-            self.add(m.title, "Could not start. The log says:", .error)
-            let errs = Panel.errorLines(m)
-            if errs.isEmpty { self.add(m.title, "  (no error line found – open Logs)", .error) }
-            for line in errs { self.add(m.title, "  " + line, .error) }
-            final = Panel.probeAll()[m]
+            // A newly configured port must be free, or the server would not come back up.
+            let port = Panel.freshPort(m)
+            let current = DispatchQueue.main.sync { self.status[m]?.ports ?? [] }
+            if !current.contains(port) && Panel.portInUse(port) {
+                self.add(m.title, "Not restarting: the new port \(port) is already in use by another program. Pick another port.", .error)
+                return
+            }
+            let r = Shell.run(Paths.brewBin, ["services", "restart", m.formula])
+            if r.status != 0 {
+                self.add(m.title, "brew services restart failed:", .error)
+                self.addOutput(m.title, r.out)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+            final = self.awaitStart(m, verb: "Restarted")
         }
     }
 
@@ -297,6 +424,19 @@ final class Panel: ObservableObject {
         Shell.open(["-t", path])
     }
 
-    func openHtdocs() { Shell.open([Paths.htdocs]) }
-    func openTerminal() { Shell.open(["-a", "Terminal", Paths.htdocs]) }
+    func openHtdocs() { Shell.open([documentRoot]) }
+    func openTerminal() { Shell.open(["-a", "Terminal", documentRoot]) }
+
+    /// Stops the servers before Lampion quits (General → Stop servers when Lampion quits). Waits for any start
+    /// or stop that is still in progress, then stops every installed server, off the main thread.
+    func stopAllBeforeQuit(then done: @escaping () -> Void) {
+        let installed = Module.allCases.filter { status[$0]?.installed != false }
+        add("Panel", "Stopping the servers before quitting…")
+        actions.async {
+            for m in installed where Panel.probeAll()[m]?.loaded == true {
+                Shell.run(Paths.brewBin, ["services", "stop", m.formula])
+            }
+            DispatchQueue.main.async(execute: done)
+        }
+    }
 }

@@ -22,8 +22,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>CFBundleIdentifier</key><string>hu.local.lampion</string>
   <key>CFBundleExecutable</key><string>Lampion</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.1</string>
+  <key>CFBundleVersion</key><string>2</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
@@ -34,6 +34,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 
+# Synced folders (iCloud Drive etc.) attach Finder/file-provider attributes that codesign rejects.
+xattr -cr "$APP"
 codesign --force --sign - "$APP"
 # Pass --no-install to only build into build/ (used for testing next to a running copy).
 if [[ "${1:-}" == "--no-install" ]]; then
