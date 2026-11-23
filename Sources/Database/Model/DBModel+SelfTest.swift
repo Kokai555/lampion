@@ -7,7 +7,7 @@ extension DBModel {
     func runSelfTest() {
         if DBModel.selfTestStarted { return }
         DBModel.selfTestStarted = true
-        let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Szerverpanel-dbtest.log")
+        let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Lampion-dbtest.log")
         try? FileManager.default.removeItem(at: logURL)
         var report = ""
         var failures = 0
@@ -25,7 +25,7 @@ extension DBModel {
         func check(_ ok: Bool, _ what: String) { out((ok ? "OK   " : "FAIL ") + what); if !ok { failures += 1 } }
         func cell(_ row: Int, _ col: String) -> String? { onMain { self.data.value(row, col) } }
 
-        let db = "_szerverpanel_teszt", tricky = "Árvíztűrő 'tükörfúrógép' \\ <b>&\"x\""
+        let db = "_lampion_teszt", tricky = "Árvíztűrő 'tükörfúrógép' \\ <b>&\"x\""
         DispatchQueue.global(qos: .userInitiated).async {
             wait()
             onMain { self.alertMessage = nil }
@@ -81,7 +81,7 @@ extension DBModel {
             check(SQLSyntax.tokenize("SELECT 'open").last?.kind == .error && SQLSyntax.tokenize("SELECT (1").last?.kind == .error
                   && SQLSyntax.tokenize("SELECT 1)").last?.kind == .error, "Unclosed quote and unbalanced parentheses are flagged")
 
-            let dumpPath = NSTemporaryDirectory() + "szerverpanel-teszt.sql"
+            let dumpPath = NSTemporaryDirectory() + "lampion-teszt.sql"
             onMain { self.dump(db: db, table: nil, to: dumpPath) }; wait()
             let dumped = (try? String(contentsOfFile: dumpPath, encoding: .utf8)) ?? ""
             check(dumped.contains("CREATE TABLE `termekek`") && dumped.contains("tükörfúrógép"), "Export to SQL file")

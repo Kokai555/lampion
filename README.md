@@ -1,4 +1,4 @@
-# Szerverpanel
+# Lampion
 
 A native macOS control panel for local web development: start, stop and monitor Apache, PHP and MariaDB,
 with a built-in database manager. Written in SwiftUI, runs natively on Apple Silicon.
@@ -22,14 +22,14 @@ with a built-in database manager. Written in SwiftUI, runs natively on Apple Sil
 
 Apache, PHP, MariaDB and phpMyAdmin are downloaded and configured automatically the first time you open the app.
 It runs `brew install httpd php mariadb phpmyadmin`, enables PHP and phpMyAdmin in Apache's `httpd.conf` (the
-original is kept as `httpd.conf.szerverpanel-backup`), adds a welcome page to the web folder and starts the servers.
+original is kept as `httpd.conf.lampion-backup`), adds a welcome page to the web folder and starts the servers.
 A banner at the top of the window shows the progress. If you already have Apache installed and only the PHP
 configuration is missing, the app asks before changing it.
 
 ## Install
 
-Download `Szerverpanel-<version>.dmg` from the [latest release](https://github.com/Kokai555/szerverpanel/releases/latest),
-open it and drag **Szerverpanel** onto **Applications**.
+Download `Lampion-<version>.dmg` from the [latest release](https://github.com/Kokai555/lampion/releases/latest),
+open it and drag **Lampion** onto **Applications**.
 
 The app is not notarized by Apple, so macOS blocks it the first time you open it. To allow it, try to open the app once,
 then go to **System Settings → Privacy & Security** and click **Open Anyway**.
@@ -44,9 +44,9 @@ Building needs Xcode.
 ./build.sh
 ```
 
-This builds the app and installs it to `/Applications/Szerverpanel.app`.
+This builds the app and installs it to `/Applications/Lampion.app`.
 
-To create the disk image, run `./package.sh`; it writes `build/Szerverpanel-<version>.dmg`.
+To create the disk image, run `./package.sh`; it writes `build/Lampion-<version>.dmg`.
 
 ## Project layout
 
@@ -69,8 +69,8 @@ package.sh               build the disk image
 ## Self-tests
 
 ```sh
-open -a Szerverpanel --args --selftest   # server start/stop (restarts the servers while it runs)
-open -a Szerverpanel --args --dbtest     # database manager, on a temporary test database
+open -a Lampion --args --selftest   # server start/stop (restarts the servers while it runs)
+open -a Lampion --args --dbtest     # database manager, on a temporary test database
 ```
 
-Results are written to `~/Library/Logs/Szerverpanel.log` and `~/Library/Logs/Szerverpanel-dbtest.log`.
+Results are written to `~/Library/Logs/Lampion.log` and `~/Library/Logs/Lampion-dbtest.log`.

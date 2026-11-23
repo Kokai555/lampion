@@ -6,14 +6,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct SzerverpanelApp: App {
+struct LampionApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var panel = Panel()
     @StateObject private var database = DBModel()
     @StateObject private var updater = Updater()
 
     var body: some Scene {
-        Window("Szerverpanel", id: "main") {
+        Window("Lampion", id: "main") {
             ContentView().environmentObject(panel).environmentObject(updater)
         }
         .defaultSize(width: 860, height: 560)

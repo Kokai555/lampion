@@ -22,7 +22,7 @@ struct SetupBanner: View {
                 icon
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Homebrew is required").fontWeight(.semibold)
-                    Text("Szerverpanel installs Apache, PHP and MariaDB with Homebrew. Finish Homebrew's installer in the Terminal window (it asks for your password); the download continues here by itself.")
+                    Text("Lampion installs Apache, PHP and MariaDB with Homebrew. Finish Homebrew's installer in the Terminal window (it asks for your password); the download continues here by itself.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()

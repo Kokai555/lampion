@@ -10,13 +10,13 @@ final class Panel: ObservableObject {
     @Published var phpLinked = false
     @Published var setupState: SetupState = .ready
 
-    private let actions = DispatchQueue(label: "szerverpanel.actions")   // műveletek sorban
+    private let actions = DispatchQueue(label: "lampion.actions")   // műveletek sorban
     private var timer: Timer?
     private var refreshing = false
     private var generation = 0
 
     init() {
-        add("Panel", "Szerverpanel started")
+        add("Panel", "Lampion started")
         add("Panel", "Homebrew: \(Paths.brew)  ·  htdocs: \(Paths.htdocs)")
         DispatchQueue.global(qos: .utility).async { self.loadPHP() }
         refresh(initial: true)
@@ -24,13 +24,13 @@ final class Panel: ObservableObject {
         if CommandLine.arguments.contains("--selftest") { runSelfTest() }
     }
 
-    // Napló (a képernyőn és a ~/Library/Logs/Szerverpanel.log fájlban)
+    // Napló (a képernyőn és a ~/Library/Logs/Lampion.log fájlban)
     private static let logURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Logs/Szerverpanel.log")
+        .appendingPathComponent("Library/Logs/Lampion.log")
     private static let fileFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"; return f
     }()
-    private let fileQueue = DispatchQueue(label: "szerverpanel.logfile")
+    private let fileQueue = DispatchQueue(label: "lampion.logfile")
 
     func add(_ module: String, _ text: String, _ level: LogEntry.Level = .info) {
         let entry = LogEntry(module: module, text: text, level: level)

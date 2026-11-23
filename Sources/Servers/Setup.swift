@@ -10,7 +10,7 @@ enum SetupState: Equatable {
 }
 
 enum Setup {
-    static let marker = "# ---- Szerverpanel: PHP and phpMyAdmin ----"
+    static let marker = "# ---- Lampion: PHP and phpMyAdmin ----"
     static let phpMyAdminDir = "\(Paths.brew)/share/phpmyadmin"
     static let phpModule = "\(Paths.brew)/opt/php/lib/httpd/modules/libphp.so"
 
@@ -125,10 +125,10 @@ enum Setup {
         let conf = try String(contentsOfFile: Paths.httpdConf, encoding: .utf8)
         let newConf = configuredApache(conf)
         if newConf != conf {
-            let backup = Paths.httpdConf + ".szerverpanel-backup"
+            let backup = Paths.httpdConf + ".lampion-backup"
             if !fm.fileExists(atPath: backup) { try conf.write(toFile: backup, atomically: true, encoding: .utf8) }
             try newConf.write(toFile: Paths.httpdConf, atomically: true, encoding: .utf8)
-            changes.append("Enabled PHP and phpMyAdmin in httpd.conf (original saved as httpd.conf.szerverpanel-backup)")
+            changes.append("Enabled PHP and phpMyAdmin in httpd.conf (original saved as httpd.conf.lampion-backup)")
         }
 
         if let pma = try? String(contentsOfFile: Paths.pmaConf, encoding: .utf8) {
@@ -189,12 +189,12 @@ extension Panel {
     func installHomebrew() {
         let script = """
             #!/bin/bash
-            echo "Szerverpanel needs Homebrew to install Apache, PHP and MariaDB."
+            echo "Lampion needs Homebrew to install Apache, PHP and MariaDB."
             echo "This runs Homebrew's official installer from https://brew.sh"
             echo
             /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
             echo
-            echo "Finished. Close this window and return to Szerverpanel."
+            echo "Finished. Close this window and return to Lampion."
 
             """
         let path = NSTemporaryDirectory() + "Install Homebrew.command"

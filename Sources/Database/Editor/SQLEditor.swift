@@ -11,7 +11,7 @@ struct SQLEditor: NSViewRepresentable {
     /// A szerkesztőben pirossal megjelölt szövegrészek (önteszthez).
     static var markedErrors: [String] = []
 
-    static let completeTest = Notification.Name("szerverpanel.completeTest")
+    static let completeTest = Notification.Name("lampion.completeTest")
     /// Az éppen látható javaslatok (önteszthez).
     static var shownSuggestions: [String] = []
 

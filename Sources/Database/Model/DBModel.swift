@@ -47,7 +47,7 @@ final class DBModel: ObservableObject {
     /// Kiegészítéshez: adatbázis → tábla → oszlopnevek.
     var completionColumns: [String: [String: [String]]] = [:]
 
-    private let queue = DispatchQueue(label: "szerverpanel.db")
+    private let queue = DispatchQueue(label: "lampion.db")
 
     init() { signal(SIGPIPE, SIG_IGN) }
 

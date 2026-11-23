@@ -28,16 +28,16 @@ struct UpdateCard: View {
 
             case .upToDate:
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 28)).foregroundStyle(.green).frame(width: 40)
-                NoticeText(title: "Szerverpanel is up to date", detail: "Version \(updater.currentVersion) is the latest.")
+                NoticeText(title: "Lampion is up to date", detail: "Version \(updater.currentVersion) is the latest.")
                 Spacer()
 
             case .available(let release):
                 appIcon
-                NoticeText(title: "Szerverpanel \(release.version) is available",
+                NoticeText(title: "Lampion \(release.version) is available",
                            detail: "Version \(updater.currentVersion) is installed. Updating takes a few seconds and the servers keep running.")
                 Spacer(minLength: 12)
                 Button("Later") { updater.later() }
-                    .help("Hide this until the next time Szerverpanel opens")
+                    .help("Hide this until the next time Lampion opens")
                 Button("What’s New") { showingNotes = true }
                     .popover(isPresented: $showingNotes, arrowEdge: .bottom) { ReleaseNotes(release: release, isPresented: $showingNotes) }
                 Button("Update Now") { updater.install(release) }
@@ -46,7 +46,7 @@ struct UpdateCard: View {
             case .downloading(let release, let fraction):
                 appIcon
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Downloading Szerverpanel \(release.version)").font(.headline)
+                    Text("Downloading Lampion \(release.version)").font(.headline)
                     ProgressView(value: fraction).progressViewStyle(.linear).frame(maxWidth: 360)
                         .accessibilityLabel("Download progress")
                 }
@@ -58,10 +58,10 @@ struct UpdateCard: View {
             case .installing(let release):
                 appIcon
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Installing Szerverpanel \(release.version)").font(.headline)
+                    Text("Installing Lampion \(release.version)").font(.headline)
                     ProgressView().progressViewStyle(.linear).frame(maxWidth: 360)
                 }
-                Text("Szerverpanel reopens in a moment.").font(.callout).foregroundStyle(.secondary)
+                Text("Lampion reopens in a moment.").font(.callout).foregroundStyle(.secondary)
                 Spacer()
 
             case .failed(let message):

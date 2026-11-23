@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Önteszt: open -a Szerverpanel --args --selftest
+/// Önteszt: open -a Lampion --args --selftest
 extension Panel {
     func runSelfTest() {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -26,14 +26,14 @@ extension Panel {
             let live = (try? String(contentsOfFile: Paths.httpdConf, encoding: .utf8)) ?? ""
             check(Setup.configuredApache(live) == live, "Setup leaves an already configured httpd.conf unchanged")
             let stockPath = (try? FileManager.default.contentsOfDirectory(atPath: "\(Paths.brew)/etc/httpd"))?
-                .filter { $0.hasPrefix("httpd.conf.bak") || $0 == "httpd.conf.szerverpanel-backup" }.sorted().first
+                .filter { $0.hasPrefix("httpd.conf.bak") || $0 == "httpd.conf.lampion-backup" }.sorted().first
             if let stockPath, let stock = try? String(contentsOfFile: "\(Paths.brew)/etc/httpd/\(stockPath)", encoding: .utf8) {
                 let configured = Setup.configuredApache(stock)
                 check(configured.contains("LoadModule php_module") && configured.contains("Alias /phpmyadmin")
                       && configured.contains("DirectoryIndex index.php index.html") && configured.contains("\nLoadModule rewrite_module")
                       && configured.contains("ServerName localhost:8080"), "Setup enables PHP, phpMyAdmin and mod_rewrite in a stock httpd.conf")
                 check(Setup.configuredApache(configured) == configured, "Setup can be applied twice without further changes")
-                let tmp = NSTemporaryDirectory() + "szerverpanel-httpd-test.conf"
+                let tmp = NSTemporaryDirectory() + "lampion-httpd-test.conf"
                 try? configured.write(toFile: tmp, atomically: true, encoding: .utf8)
                 let syntax = Shell.run(Paths.httpd, ["-t", "-f", tmp])
                 check(syntax.status == 0, "Apache accepts the configuration Setup writes")
@@ -43,7 +43,7 @@ extension Panel {
                   && !Updater.isNewer("1.2", than: "1.3") && Updater.isNewer("1.3.1", than: "1.3"), "Updater compares version numbers correctly")
             let sample = Data("""
                 {"tag_name":"v9.9","html_url":"https://example.com/r","assets":[{"name":"notes.txt","browser_download_url":"https://example.com/n"},
-                {"name":"Szerverpanel-9.9.dmg","browser_download_url":"https://example.com/a.dmg","digest":"sha256:abc123"}]}
+                {"name":"Lampion-9.9.dmg","browser_download_url":"https://example.com/a.dmg","digest":"sha256:abc123"}]}
                 """.utf8)
             check(Updater.parseRelease(sample) == Updater.Release(version: "9.9", page: "https://example.com/r", dmgURL: "https://example.com/a.dmg", sha256: "abc123", notes: "")
                   && Updater.parseRelease(Data("{}".utf8)) == nil, "Updater reads the release and its disk image from GitHub's answer")

@@ -4,7 +4,7 @@ import CryptoKit
 
 /// Checks GitHub for a newer release and installs it in place of the running app.
 final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
-    static let repository = "Kokai555/szerverpanel"
+    static let repository = "Kokai555/lampion"
     static let releasesPage = "https://github.com/\(repository)/releases"
     private static let skippedKey = "skippedUpdateVersion"
 
@@ -140,7 +140,7 @@ final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let target = Bundle.main.bundlePath
         let parent = (target as NSString).deletingLastPathComponent
         guard FileManager.default.isWritableFile(atPath: parent), !target.contains("/AppTranslocation/"), !target.hasPrefix("/Volumes/") else {
-            state = .failed("Move Szerverpanel to the Applications folder first, then update.")
+            state = .failed("Move Lampion to the Applications folder first, then update.")
             return
         }
         state = .downloading(release, 0)
@@ -188,8 +188,8 @@ final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
 
     private func finishInstall(_ release: Release, downloaded: URL, target: String) {
         let fm = FileManager.default
-        let work = NSTemporaryDirectory() + "szerverpanel-update-\(ProcessInfo.processInfo.processIdentifier)"
-        let dmg = work + "/Szerverpanel.dmg", mount = work + "/mount", staged = work + "/Szerverpanel.app"
+        let work = NSTemporaryDirectory() + "lampion-update-\(ProcessInfo.processInfo.processIdentifier)"
+        let dmg = work + "/Lampion.dmg", mount = work + "/mount", staged = work + "/Lampion.app"
         do {
             try? fm.removeItem(atPath: work)
             try fm.createDirectory(atPath: mount, withIntermediateDirectories: true)
@@ -206,9 +206,11 @@ final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
             // 2. Copy the app out of the disk image.
             let attach = Shell.run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-mountpoint", mount, dmg])
             guard attach.status == 0 else { throw Problem("Could not open the disk image.") }
-            let copy = Shell.run("/usr/bin/ditto", ["\(mount)/Szerverpanel.app", staged])
+            // Take whichever app the disk image holds, so a renamed app can still update.
+            let appName = (try? fm.contentsOfDirectory(atPath: mount))?.first { $0.hasSuffix(".app") }
+            let copy = appName.map { Shell.run("/usr/bin/ditto", ["\(mount)/\($0)", staged]) }
             Shell.run("/usr/bin/hdiutil", ["detach", mount, "-quiet"])
-            guard copy.status == 0 else { throw Problem("The disk image does not contain Szerverpanel.") }
+            guard copy?.status == 0 else { throw Problem("The disk image does not contain an app.") }
 
             // 3. It must be an intact, newer copy of this app.
             guard Shell.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", staged]).status == 0 else {
@@ -218,7 +220,7 @@ final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
             guard info?["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier,
                   let newVersion = info?["CFBundleShortVersionString"] as? String,
                   Updater.isNewer(newVersion, than: currentVersion) else {
-                throw Problem("The download is not a newer version of Szerverpanel.")
+                throw Problem("The download is not a newer version of Lampion.")
             }
 
             // 4. Swap the app once this copy has quit, then open the new one.
