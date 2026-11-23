@@ -21,6 +21,27 @@ extension Panel {
             }
 
             Thread.sleep(forTimeInterval: 1.5)
+
+            // Setup: the Apache configuration rewrite, tested on a copy of Homebrew's stock httpd.conf.
+            let live = (try? String(contentsOfFile: Paths.httpdConf, encoding: .utf8)) ?? ""
+            check(Setup.configuredApache(live) == live, "Setup leaves an already configured httpd.conf unchanged")
+            let stockPath = (try? FileManager.default.contentsOfDirectory(atPath: "\(Paths.brew)/etc/httpd"))?
+                .filter { $0.hasPrefix("httpd.conf.bak") || $0 == "httpd.conf.szerverpanel-backup" }.sorted().first
+            if let stockPath, let stock = try? String(contentsOfFile: "\(Paths.brew)/etc/httpd/\(stockPath)", encoding: .utf8) {
+                let configured = Setup.configuredApache(stock)
+                check(configured.contains("LoadModule php_module") && configured.contains("Alias /phpmyadmin")
+                      && configured.contains("DirectoryIndex index.php index.html") && configured.contains("\nLoadModule rewrite_module")
+                      && configured.contains("ServerName localhost:8080"), "Setup enables PHP, phpMyAdmin and mod_rewrite in a stock httpd.conf")
+                check(Setup.configuredApache(configured) == configured, "Setup can be applied twice without further changes")
+                let tmp = NSTemporaryDirectory() + "szerverpanel-httpd-test.conf"
+                try? configured.write(toFile: tmp, atomically: true, encoding: .utf8)
+                let syntax = Shell.run(Paths.httpd, ["-t", "-f", tmp])
+                check(syntax.status == 0, "Apache accepts the configuration Setup writes")
+                try? FileManager.default.removeItem(atPath: tmp)
+            }
+            let pma = Setup.configuredPhpMyAdmin("$cfg['blowfish_secret'] = '';")
+            check(pma.range(of: "sodium_hex2bin\\('[0-9a-f]{64}'\\)", options: .regularExpression) != nil, "Setup generates a 32-byte phpMyAdmin secret")
+            check(onMain { self.setupState == .ready }, "No setup banner when everything is installed")
             self.add("Test", "Self-test starting")
 
             // 1. Leállítás

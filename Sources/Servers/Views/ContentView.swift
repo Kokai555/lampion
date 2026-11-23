@@ -7,6 +7,10 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if panel.setupState != .ready {
+                SetupBanner()
+                Divider()
+            }
             ModuleTable()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20).padding(.vertical, 16)

@@ -2,7 +2,8 @@ import SwiftUI
 import AppKit
 
 enum Paths {
-    static let brew = "/opt/homebrew"
+    /// Homebrew prefix. `SZERVERPANEL_PREFIX` overrides it (used by the setup test).
+    static let brew = ProcessInfo.processInfo.environment["SZERVERPANEL_PREFIX"] ?? "/opt/homebrew"
     static let brewBin = "\(brew)/bin/brew"
     static let httpd = "\(brew)/bin/httpd"
     static let mariadbd = "\(brew)/bin/mariadbd"

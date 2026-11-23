@@ -14,15 +14,12 @@ with a built-in database manager. Written in SwiftUI, runs natively on Apple Sil
 ## Requirements
 
 - macOS 14 or later, Apple Silicon
-- Xcode (to build)
-- Homebrew under `/opt/homebrew` with these packages:
+- [Homebrew](https://brew.sh) — if it is missing, the app offers to install it
 
-```sh
-brew install httpd php mariadb phpmyadmin
-```
-
-PHP and phpMyAdmin have to be wired into Apache's `httpd.conf` (see the output of `brew info php` and
-`brew info phpmyadmin`).
+Apache, PHP, MariaDB and phpMyAdmin are installed and configured for you on first launch: the app shows a
+**Set Up** banner when something is missing. Set Up runs `brew install httpd php mariadb phpmyadmin`, enables PHP
+and phpMyAdmin in Apache's `httpd.conf` (the original is kept as `httpd.conf.szerverpanel-backup`) and adds a
+welcome page to the web folder.
 
 ## Install
 
@@ -32,7 +29,11 @@ open it and drag **Szerverpanel** onto **Applications**.
 The app is not notarized by Apple, so macOS blocks it the first time you open it. To allow it, try to open the app once,
 then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
+On first launch, click **Set Up** in the banner at the top of the window to download the server software.
+
 ## Build from source
+
+Building needs Xcode.
 
 ```sh
 ./build.sh

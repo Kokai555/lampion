@@ -8,6 +8,7 @@ final class Panel: ObservableObject {
     @Published var phpVersion = "–"
     @Published var phpIni: String?
     @Published var phpLinked = false
+    @Published var setupState: SetupState = .ready
 
     private let actions = DispatchQueue(label: "szerverpanel.actions")   // műveletek sorban
     private var timer: Timer?
@@ -56,6 +57,8 @@ final class Panel: ObservableObject {
     }
 
     // PHP adatok
+    func reloadPHP() { DispatchQueue.global(qos: .utility).async { self.loadPHP() } }
+
     private func loadPHP() {
         let r = Shell.run(Paths.php, ["-r", "echo PHP_VERSION.PHP_EOL.php_ini_loaded_file();"])
         let parts = r.out.split(separator: "\n").map(String.init)
@@ -148,6 +151,7 @@ final class Panel: ObservableObject {
                 let old = self.status
                 self.status = new
                 self.refreshing = false
+                self.evaluateSetup()
                 for m in Module.allCases {
                     guard let n = new[m] else { continue }
                     if initial {
@@ -175,6 +179,10 @@ final class Panel: ObservableObject {
     func toggle(_ m: Module) {
         guard !busy.contains(m) else { return }
         let current = status[m] ?? ModuleStatus()
+        guard current.installed else {
+            add(m.title, "Not installed yet – use Set Up at the top of the window.", .warn)
+            return
+        }
         let wasRunning = current.running
         busy.insert(m)
         add(m.title, wasRunning ? "Stopping…" : "Starting…")
@@ -265,7 +273,7 @@ final class Panel: ObservableObject {
         return lines.suffix(count).map { $0.count > 140 ? String($0.prefix(140)) + "…" : $0 }
     }
 
-    func startAll() { for m in Module.allCases where status[m]?.running == false { toggle(m) } }
+    func startAll() { for m in Module.allCases where status[m]?.running == false && status[m]?.installed == true { toggle(m) } }
     func stopAll() { for m in Module.allCases where status[m]?.running == true { toggle(m) } }
 
     // Admin / Config / Logs
