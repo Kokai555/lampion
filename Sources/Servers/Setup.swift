@@ -164,14 +164,26 @@ extension Panel {
             state = (missing.isEmpty && Setup.phpIsLinked()) ? .ready : .needsPackages(missing)
         }
         if state != setupState { setupState = state }
-        // Test hook: `--run-setup` starts the setup without a click.
-        if CommandLine.arguments.contains("--run-setup"), !Panel.autoSetupStarted, case .needsPackages = setupState {
-            Panel.autoSetupStarted = true
-            runSetup()
-        }
+        startSetupAutomatically()
     }
 
-    private static var autoSetupStarted = false
+    private static var autoInstallStarted = false
+    private static var autoHomebrewStarted = false
+
+    /// On first launch the download starts by itself, once per launch; the banner button remains for retries.
+    /// An existing installation that only lacks the PHP configuration is left for the user to confirm.
+    private func startSetupAutomatically() {
+        switch setupState {
+        case .needsPackages(let missing) where !missing.isEmpty && !Panel.autoInstallStarted:
+            Panel.autoInstallStarted = true
+            runSetup()
+        case .needsHomebrew where !Panel.autoHomebrewStarted:
+            Panel.autoHomebrewStarted = true
+            installHomebrew()
+        default:
+            break
+        }
+    }
 
     /// Homebrew's installer needs a password, so it runs in Terminal where the user can see and answer it.
     func installHomebrew() {
@@ -205,6 +217,7 @@ extension Panel {
         }
         DispatchQueue.global(qos: .userInitiated).async {
             var ok = true
+            var started = false
             if !missing.isEmpty {
                 let status = Shell.stream(Paths.brewBin, ["install"] + missing) { line in self.add("Setup", "  " + line) }
                 if status != 0 {
@@ -218,7 +231,8 @@ extension Panel {
                     for c in changes { self.add("Setup", c) }
                     let test = Shell.run(Paths.httpd, ["-t"])
                     if test.status == 0 {
-                        self.add("Setup", "Setup complete. Press Start All to run the servers.", .ok)
+                        self.add("Setup", "Setup complete. Starting the servers.", .ok)
+                        started = true
                     } else {
                         self.add("Setup", "Apache reports a configuration problem: \(test.out.trimmed)", .error)
                     }
@@ -231,6 +245,10 @@ extension Panel {
                 self.evaluateSetup()
                 self.reloadPHP()
                 self.refresh()
+                // After a fresh install, bring the servers up so the panel is ready to use.
+                if started && !missing.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.startAll() }
+                }
             }
         }
     }

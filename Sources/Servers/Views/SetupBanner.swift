@@ -13,8 +13,8 @@ struct SetupBanner: View {
             case .running:
                 ProgressView().controlSize(.small)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Setting up…").fontWeight(.semibold)
-                    Text("Progress appears in the log below. This can take several minutes.")
+                    Text("Downloading and setting up Apache, PHP and MariaDB…").fontWeight(.semibold)
+                    Text("Progress appears in the log below. This can take several minutes; the servers start when it finishes.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -22,11 +22,11 @@ struct SetupBanner: View {
                 icon
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Homebrew is required").fontWeight(.semibold)
-                    Text("Szerverpanel installs Apache, PHP and MariaDB with Homebrew. The installer opens in Terminal and asks for your password.")
+                    Text("Szerverpanel installs Apache, PHP and MariaDB with Homebrew. Finish Homebrew's installer in the Terminal window (it asks for your password); the download continues here by itself.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Button("Install Homebrew…") { panel.installHomebrew() }.buttonStyle(.borderedProminent)
+                Button("Open Installer Again") { panel.installHomebrew() }
             case .needsPackages(let missing):
                 icon
                 VStack(alignment: .leading, spacing: 2) {
@@ -34,11 +34,11 @@ struct SetupBanner: View {
                         .fontWeight(.semibold)
                     Text(missing.isEmpty
                          ? "Set Up enables PHP and phpMyAdmin in Apache's configuration."
-                         : "Set Up downloads \(missing.joined(separator: ", ")) with Homebrew and configures them.")
+                         : "The download did not finish. Try Again downloads \(missing.joined(separator: ", ")) with Homebrew and configures them.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Button("Set Up") { panel.runSetup() }.buttonStyle(.borderedProminent)
+                Button(missing.isEmpty ? "Set Up" : "Try Again") { panel.runSetup() }.buttonStyle(.borderedProminent)
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
