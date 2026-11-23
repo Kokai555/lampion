@@ -20,6 +20,17 @@ struct DBSidebar: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
+            list
+                // A table opened from the detail pane or the designer may be far down: bring it into view.
+                .onChange(of: m.selection) { _, node in
+                    guard let node else { return }
+                    DispatchQueue.main.async { proxy.scrollTo(node) }
+                }
+        }
+    }
+
+    private var list: some View {
         List(selection: $m.selection) {
             Section("Databases") {
                 ForEach(userDatabases, id: \.self) { databaseRow($0) }
@@ -78,21 +89,27 @@ struct DBSidebar: View {
             }
         }
         .tag(Node.database(db))
+        .id(Node.database(db))
     }
 
     /// Opens a database once its tables are known, so the rows expand with the disclosure instead of
     /// popping in a moment after an empty expansion. Already loaded: opens at once (and refreshes quietly).
+    /// The list animates a click on the arrow itself, so the state follows without a second animation:
+    /// two animations at once left the selected row drawn over its neighbour.
     private func setExpanded(_ db: String, _ open: Bool) {
-        let animation = DBMotion.spring(reduceMotion)
         guard open else {
-            withAnimation(animation) { _ = m.expanded.remove(db) }
+            // A selected table hidden by the fold would leave a stray highlight; select its database instead,
+            // as Finder and Xcode do.
+            if case .table(db, _) = m.selection { m.selection = .database(db) }
+            m.expanded.remove(db)
             return
         }
         if m.tables[db] != nil {
-            withAnimation(animation) { _ = m.expanded.insert(db) }
+            m.expanded.insert(db)
             m.loadTables(db)
         } else {
-            m.loadTables(db) { withAnimation(animation) { _ = m.expanded.insert(db) } }
+            // Rows arrive after the arrow has turned, so this insertion is animated here.
+            m.loadTables(db) { withAnimation(DBMotion.spring(reduceMotion)) { _ = m.expanded.insert(db) } }
         }
     }
 
@@ -113,6 +130,7 @@ struct DBSidebar: View {
             }
         }
         .tag(Node.table(db, t.name))
+        .id(Node.table(db, t.name))
         .contextMenu { TableContextMenu(m: m, db: db, table: t, showOpen: false) }
     }
 
@@ -154,6 +172,8 @@ struct DBSidebar: View {
             .padding(.horizontal, 14)
             .frame(height: 34)
         }
+        // Rows scroll under the footer, so it needs its own backdrop.
+        .background(.bar)
     }
 }
 

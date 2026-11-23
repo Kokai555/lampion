@@ -78,6 +78,38 @@ enum Snapshot {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { shoot(0) }
     }
 
+    /// `--db --sidebar-demo <folder> <database> <table>`: opens a table of a collapsed database from the
+    /// detail pane (as a click in the table list does) and saves the window before and after.
+    static func runSidebarDemo(into folder: String, database: String, table: String) {
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        func shot(_ name: String) {
+            if let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.contains("db") == true }) {
+                Shell.run("/usr/sbin/screencapture", ["-x", "-o", "-l", String(window.windowNumber), folder + "/" + name + ".png"])
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            NSApp.activate(ignoringOtherApps: true)
+            guard let m = DBModel.shared else { return }
+            m.showSystemDatabases = true
+            m.expanded.remove(database)
+            m.selection = .database(database)
+            m.tab = .tables
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                shot("1-before")
+                m.selection = .table(database, table)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { shot("2-during") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    shot("3-after")
+                    // A real click on the disclosure arrow comes from outside (see the test script) in the next 3 s.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                        shot("5-collapsed")
+                        NSApp.terminate(nil)
+                    }
+                }
+            }
+        }
+    }
+
     /// `--db --switch-demo <tab> <db1> <db2>`: selects the two databases in turn every 1.5 s on the given tab
     /// (designer or query), for recording how the switch looks. Quits after 8 switches.
     static func runSwitchDemo(tab: String, first: String, second: String) {

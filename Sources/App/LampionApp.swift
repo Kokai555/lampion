@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = args.firstIndex(of: "--switch-demo"), i + 3 < args.count {
             Snapshot.runSwitchDemo(tab: args[i + 1], first: args[i + 2], second: args[i + 3])
         }
+        if let i = args.firstIndex(of: "--sidebar-demo"), i + 3 < args.count {
+            Snapshot.runSidebarDemo(into: args[i + 1], database: args[i + 2], table: args[i + 3])
+        }
         if let i = args.firstIndex(of: "--snapshot-db"), i + 1 < args.count {
             let db = i + 2 < args.count ? args[i + 2] : "lampion_demo"
             let table = i + 3 < args.count ? args[i + 3] : "customers"
