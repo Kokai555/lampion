@@ -1,42 +1,44 @@
 # Szerverpanel
 
-Natív macOS kezelőpanel helyi webfejlesztéshez: Apache, PHP és MariaDB indítása, leállítása és felügyelete,
-beépített adatbázis-kezelővel. SwiftUI-ban készült, Apple Siliconon natívan fut.
+A native macOS control panel for local web development: start, stop and monitor Apache, PHP and MariaDB,
+with a built-in database manager. Written in SwiftUI, runs natively on Apple Silicon.
 
-## Mit tud
+> The app's user interface is in Hungarian.
 
-- **Szerverek:** Apache és MariaDB indítása/leállítása, PID és port kijelzése, portütközés felismerése,
-  beállítófájlok és naplók megnyitása, eseménynapló.
-- **Adatbázis-kezelő:** adatbázis- és táblafa, szerkeszthető adatrács (szűrés, rendezés, lapozás),
-  táblaszerkezet, SQL-szerkesztő Tab-kiegészítéssel, export és import SQL fájlból.
-- Minden parancs elérhető a menüsorból is.
+## Features
 
-## Követelmények
+- **Servers:** start and stop Apache and MariaDB, see PIDs and ports, detect port conflicts,
+  open config files and logs, event log.
+- **Database manager:** database and table tree, editable data grid (filter, sort, paging),
+  table structure, SQL editor with Tab completion, export to and import from SQL files.
+- Every command is also available from the menu bar.
 
-- macOS 14 vagy újabb, Apple Silicon
-- Xcode (a fordításhoz)
-- Homebrew az `/opt/homebrew` alatt, ezekkel a csomagokkal:
+## Requirements
+
+- macOS 14 or later, Apple Silicon
+- Xcode (to build)
+- Homebrew under `/opt/homebrew` with these packages:
 
 ```sh
 brew install httpd php mariadb phpmyadmin
 ```
 
-A PHP-t és a phpMyAdmint az Apache `httpd.conf` fájljában kell bekötni (lásd a `brew info php` és
-`brew info phpmyadmin` kimenetét).
+PHP and phpMyAdmin have to be wired into Apache's `httpd.conf` (see the output of `brew info php` and
+`brew info phpmyadmin`).
 
-## Fordítás és telepítés
+## Build and install
 
 ```sh
 ./build.sh
 ```
 
-Ez lefordítja az appot, és az `/Applications/Szerverpanel.app` helyre telepíti.
+This builds the app and installs it to `/Applications/Szerverpanel.app`.
 
-## Önteszt
+## Self-tests
 
 ```sh
-open -a Szerverpanel --args --selftest   # szerverek indítása/leállítása (közben újraindítja őket)
-open -a Szerverpanel --args --dbtest     # adatbázis-kezelő, ideiglenes tesztadatbázison
+open -a Szerverpanel --args --selftest   # server start/stop (restarts the servers while it runs)
+open -a Szerverpanel --args --dbtest     # database manager, on a temporary test database
 ```
 
-Az eredmény a `~/Library/Logs/Szerverpanel.log` és a `~/Library/Logs/Szerverpanel-dbtest.log` fájlba kerül.
+Results are written to `~/Library/Logs/Szerverpanel.log` and `~/Library/Logs/Szerverpanel-dbtest.log`.
