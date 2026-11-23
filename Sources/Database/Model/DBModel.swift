@@ -114,7 +114,12 @@ final class DBModel: ObservableObject {
             }
             self.connectionError = nil
             self.databases = r.sets.first?.rows.compactMap { $0.first ?? nil } ?? []
-            for d in self.expanded where self.databases.contains(d) { self.loadTables(d) }
+            // Minden olyan adatbázis tábláit újratöltjük, amelyet a fa már mutatott vagy éppen ki van jelölve.
+            var stale = self.expanded.union(self.tables.keys)
+            if let current = self.currentDB { stale.insert(current) }
+            for d in stale {
+                if self.databases.contains(d) { self.loadTables(d) } else { self.tables[d] = nil }
+            }
             switch self.selection {
             case .database(let d) where !self.databases.contains(d): self.selection = nil
             case .table(let d, _) where !self.databases.contains(d): self.selection = nil

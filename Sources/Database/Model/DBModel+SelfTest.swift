@@ -135,6 +135,10 @@ extension DBModel {
             check(onMain { self.data.rows.isEmpty }, "Empty table")
             onMain { self.dropTable("termekek", in: db) }; wait()
             check(onMain { self.tables[db]?.isEmpty == true }, "Delete table")
+            onMain { self.expanded.remove(db); self.selection = .database(db) }
+            Thread.sleep(forTimeInterval: 0.3)
+            onMain { self.tab = .query; self.queryText = "CREATE TABLE diak (om CHAR(10) PRIMARY KEY, nev VARCHAR(100) NOT NULL)"; self.runQuery() }; wait()
+            check(onMain { self.tables[db]?.map(\.name) == ["diak"] }, "A table created by a query shows up in a collapsed database")
             onMain { self.dropDatabase(db) }; wait()
             check(onMain { !self.databases.contains(db) }, "Delete database")
             check(onMain { self.alertMessage == nil }, "No unexpected error message left")

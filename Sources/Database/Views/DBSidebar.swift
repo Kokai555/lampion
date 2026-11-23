@@ -22,7 +22,7 @@ struct DBSidebar: View {
                 DisclosureGroup(isExpanded: Binding(
                     get: { m.expanded.contains(db) },
                     set: { open in
-                        if open { m.expanded.insert(db); if m.tables[db] == nil { m.loadTables(db) } }
+                        if open { m.expanded.insert(db); m.loadTables(db) }
                         else { m.expanded.remove(db) }
                     })) {
                     ForEach(shownTables(db)) { t in
