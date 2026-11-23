@@ -24,13 +24,23 @@ brew install httpd php mariadb phpmyadmin
 PHP and phpMyAdmin have to be wired into Apache's `httpd.conf` (see the output of `brew info php` and
 `brew info phpmyadmin`).
 
-## Build and install
+## Install
+
+Download `Szerverpanel-<version>.dmg` from the [latest release](https://github.com/Kokai555/szerverpanel/releases/latest),
+open it and drag **Szerverpanel** onto **Applications**.
+
+The app is not notarized by Apple, so macOS blocks it the first time you open it. To allow it, try to open the app once,
+then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+## Build from source
 
 ```sh
 ./build.sh
 ```
 
 This builds the app and installs it to `/Applications/Szerverpanel.app`.
+
+To create the disk image, run `./package.sh`; it writes `build/Szerverpanel-<version>.dmg`.
 
 ## Self-tests
 
