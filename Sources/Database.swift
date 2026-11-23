@@ -870,6 +870,168 @@ struct GridView: NSViewRepresentable {
     }
 }
 
+// MARK: - SQL szintaxis: színezés és hibahelyek
+
+enum SQLSyntax {
+    enum Kind { case keyword, function, type, string, number, comment, identifier, error }
+    struct Token { let range: NSRange; let kind: Kind }
+
+    static let types: Set<String> = ["INT", "INTEGER", "BIGINT", "SMALLINT", "MEDIUMINT", "TINYINT", "DECIMAL", "DEC", "NUMERIC", "FLOAT",
+        "DOUBLE", "REAL", "BIT", "BOOL", "BOOLEAN", "SERIAL", "CHAR", "VARCHAR", "NVARCHAR", "BINARY", "VARBINARY", "TEXT", "TINYTEXT",
+        "MEDIUMTEXT", "LONGTEXT", "BLOB", "TINYBLOB", "MEDIUMBLOB", "LONGBLOB", "DATE", "DATETIME", "TIMESTAMP", "TIME", "YEAR", "ENUM",
+        "JSON", "GEOMETRY", "UNSIGNED", "SIGNED", "ZEROFILL"]
+
+    static let functions: Set<String> = ["COUNT", "SUM", "AVG", "MIN", "MAX", "CONCAT", "COALESCE", "IFNULL", "NOW", "IF", "ABS", "ADDDATE",
+        "ADDTIME", "AES_DECRYPT", "AES_ENCRYPT", "BIN", "BIT_LENGTH", "CAST", "CEIL", "CEILING", "CHAR_LENGTH", "CONCAT_WS", "CONNECTION_ID",
+        "CONVERT", "CURDATE", "CURTIME", "DATABASE", "DATEDIFF", "DATE_ADD", "DATE_FORMAT", "DATE_SUB", "DAY", "DAYNAME", "DAYOFMONTH",
+        "DAYOFWEEK", "DAYOFYEAR", "DENSE_RANK", "ELT", "EXP", "EXTRACT", "FIELD", "FIND_IN_SET", "FIRST_VALUE", "FLOOR", "FORMAT", "FOUND_ROWS",
+        "FROM_UNIXTIME", "GREATEST", "GROUP_CONCAT", "HEX", "HOUR", "INET_ATON", "INET_NTOA", "INSTR", "ISNULL", "JSON_ARRAY", "JSON_ARRAYAGG",
+        "JSON_CONTAINS", "JSON_EXTRACT", "JSON_LENGTH", "JSON_OBJECT", "JSON_OBJECTAGG", "JSON_SET", "JSON_UNQUOTE", "JSON_VALUE", "LAG",
+        "LAST_DAY", "LAST_INSERT_ID", "LAST_VALUE", "LCASE", "LEAD", "LEAST", "LEFT", "LENGTH", "LN", "LOCATE", "LOG", "LOWER", "LPAD", "LTRIM",
+        "MAKEDATE", "MD5", "MINUTE", "MOD", "MONTH", "MONTHNAME", "NULLIF", "NTILE", "PI", "POSITION", "POW", "POWER", "QUARTER", "RAND", "RANK",
+        "REPEAT", "REPLACE", "REVERSE", "RIGHT", "ROUND", "ROW_COUNT", "ROW_NUMBER", "RPAD", "RTRIM", "SECOND", "SHA1", "SHA2", "SIGN", "SLEEP",
+        "SQRT", "STR_TO_DATE", "SUBDATE", "SUBSTR", "SUBSTRING", "SUBSTRING_INDEX", "SYSDATE", "TIMEDIFF", "TIMESTAMPDIFF", "TIME_FORMAT",
+        "TO_DAYS", "TRIM", "TRUNCATE", "UCASE", "UNHEX", "UNIX_TIMESTAMP", "UPPER", "USER", "UTC_TIMESTAMP", "UUID", "VERSION", "WEEK",
+        "WEEKDAY", "YEARWEEK"]
+
+    static let keywords: Set<String> = Set(DBModel.keywords.filter { !$0.contains(" ") && $0 == $0.uppercased() })
+
+    static func color(_ kind: Kind) -> NSColor {
+        switch kind {
+        case .keyword: return .systemPurple
+        case .function: return .systemBlue
+        case .type: return .systemTeal
+        case .string: return .systemRed
+        case .number: return .systemGreen
+        case .comment: return .secondaryLabelColor
+        case .identifier: return .systemOrange
+        case .error: return .systemRed
+        }
+    }
+
+    /// Szavakra bontja az SQL-t. `.error`: lezáratlan idézőjel vagy pár nélküli zárójel.
+    static func tokenize(_ text: String) -> [Token] {
+        let s = text as NSString
+        let n = s.length
+        var out: [Token] = []
+        var parens: [Int] = []
+        var i = 0
+        func ch(_ k: Int) -> unichar { k < n ? s.character(at: k) : 0 }
+        func isDigit(_ c: unichar) -> Bool { c >= 48 && c <= 57 }
+        func lineEnd(_ from: Int) -> Int { var j = from; while j < n && ch(j) != 10 { j += 1 }; return j }
+        func add(_ start: Int, _ end: Int, _ kind: Kind) { out.append(Token(range: NSRange(location: start, length: end - start), kind: kind)) }
+
+        while i < n {
+            let c = ch(i)
+            let dashComment = c == 45 && ch(i + 1) == 45 && (i + 2 >= n || ch(i + 2) == 32 || ch(i + 2) == 9 || ch(i + 2) == 10)
+            if dashComment || c == 35 {                                   // -- megjegyzés, # megjegyzés
+                let j = lineEnd(i); add(i, j, .comment); i = j; continue
+            }
+            if c == 47 && ch(i + 1) == 42 {                               // /* megjegyzés */
+                var j = i + 2
+                while j < n && !(ch(j) == 42 && ch(j + 1) == 47) { j += 1 }
+                j = min(n, j + 2); add(i, j, .comment); i = j; continue
+            }
+            if c == 39 || c == 34 || c == 96 {                            // 'szöveg', "szöveg", `név`
+                var j = i + 1
+                var closed = false
+                while j < n {
+                    let d = ch(j)
+                    if d == 92 && c != 96 { j += 2; continue }
+                    if d == c {
+                        if ch(j + 1) == c { j += 2; continue }
+                        closed = true; j += 1; break
+                    }
+                    j += 1
+                }
+                if closed {
+                    add(i, min(j, n), c == 96 ? .identifier : .string); i = min(j, n)
+                } else {
+                    let j = lineEnd(i); add(i, j, .error); i = max(j, i + 1)
+                }
+                continue
+            }
+            if isDigit(c) && (i == 0 || !SQLTextView.isIdentifier(ch(i - 1))) {
+                var j = i
+                while j < n && (SQLTextView.isIdentifier(ch(j)) || ch(j) == 46) { j += 1 }
+                add(i, j, .number); i = j; continue
+            }
+            if SQLTextView.isIdentifier(c) {
+                var j = i
+                while j < n && SQLTextView.isIdentifier(ch(j)) { j += 1 }
+                let word = s.substring(with: NSRange(location: i, length: j - i)).uppercased()
+                var k = j
+                while k < n && (ch(k) == 32 || ch(k) == 9) { k += 1 }
+                if functions.contains(word) && ch(k) == 40 { add(i, j, .function) }
+                else if types.contains(word) { add(i, j, .type) }
+                else if keywords.contains(word) { add(i, j, .keyword) }
+                i = j; continue
+            }
+            if c == 40 { parens.append(i) }
+            if c == 41 { if parens.isEmpty { add(i, i + 1, .error) } else { parens.removeLast() } }
+            i += 1
+        }
+        for p in parens { add(p, p + 1, .error) }
+        return out
+    }
+
+    private static func firstMatch(_ pattern: String, _ text: String, group: Int = 1) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+              let m = re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)),
+              m.numberOfRanges > group, m.range(at: group).location != NSNotFound else { return nil }
+        return (text as NSString).substring(with: m.range(at: group))
+    }
+
+    /// A MariaDB hibaüzenete alapján megkeresi a hibás részt a szerkesztő szövegében.
+    static func errorRanges(message: String, in text: String) -> [NSRange] {
+        let s = text as NSString
+        guard s.length > 0 else { return [] }
+        func wordRange(at location: Int) -> NSRange {
+            var end = location
+            while end < s.length, let u = UnicodeScalar(s.character(at: end)), !CharacterSet.whitespacesAndNewlines.contains(u) { end += 1 }
+            return NSRange(location: location, length: max(1, end - location))
+        }
+
+        // 1) Szintaktikai hiba: "... near 'RÉSZLET' at line N"
+        if message.contains("near '") {
+            let fragment = firstMatch("near '(.*)' at line \\d+", message) ?? ""
+            let head = String((fragment.split(separator: "\n").first ?? "").prefix(40))
+            if !head.trimmed.isEmpty {
+                let r = s.range(of: head)
+                if r.location != NSNotFound { return [wordRange(at: r.location)] }
+            }
+            // A hiba az utasítás végén van: az utolsó szót jelöljük.
+            var end = s.length
+            while end > 0, let u = UnicodeScalar(s.character(at: end - 1)), CharacterSet.whitespacesAndNewlines.contains(u) || u == ";" { end -= 1 }
+            var start = end
+            while start > 0, let u = UnicodeScalar(s.character(at: start - 1)), !CharacterSet.whitespacesAndNewlines.contains(u) { start -= 1 }
+            return end > start ? [NSRange(location: start, length: end - start)] : []
+        }
+
+        // 2) Ismeretlen oszlop, tábla, adatbázis: az idézőjelben lévő nevet keressük.
+        if let quoted = firstMatch("'([^']+)'", message) {
+            for name in [quoted, String(quoted.split(separator: ".").last ?? "")] where !name.isEmpty {
+                let pattern = "(?<![A-Za-z0-9_$])" + NSRegularExpression.escapedPattern(for: name) + "(?![A-Za-z0-9_$])"
+                if let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                   let m = re.firstMatch(in: text, range: NSRange(location: 0, length: s.length)) { return [m.range] }
+            }
+        }
+
+        // 3) Végső esetben a jelzett sor.
+        if let lineText = firstMatch("at line (\\d+)", message), let line = Int(lineText), line >= 1 {
+            var start = 0
+            for _ in 1..<line {
+                let r = s.range(of: "\n", range: NSRange(location: start, length: s.length - start))
+                if r.location == NSNotFound { break }
+                start = r.location + 1
+            }
+            let r = s.lineRange(for: NSRange(location: min(start, s.length - 1), length: 0))
+            return [r]
+        }
+        return []
+    }
+}
+
 // MARK: - SQL-szerkesztő Tab-kiegészítéssel
 
 final class SQLTextView: NSTextView {
@@ -901,7 +1063,13 @@ final class SQLTextView: NSTextView {
 
 struct SQLEditor: NSViewRepresentable {
     @Binding var text: String
+    /// Az utolsó futtatás hibaüzenete; a szerkesztő megjelöli a hibás részt.
+    var error: String? = nil
+    var errorVersion = 0
     var completions: (_ prefix: String, _ qualifier: String?) -> [String]
+
+    /// A szerkesztőben pirossal megjelölt szövegrészek (önteszthez).
+    static var markedErrors: [String] = []
 
     static let completeTest = Notification.Name("szerverpanel.completeTest")
     /// Az éppen látható javaslatok (önteszthez).
@@ -938,14 +1106,25 @@ struct SQLEditor: NSViewRepresentable {
         sv.drawsBackground = false
         sv.borderType = .noBorder
         context.coordinator.textView = tv
+        context.coordinator.highlight()
         NotificationCenter.default.addObserver(context.coordinator, selector: #selector(Coordinator.runCompleteTest(_:)),
                                                name: SQLEditor.completeTest, object: nil)
         return sv
     }
 
     func updateNSView(_ sv: NSScrollView, context: Context) {
-        context.coordinator.parent = self
-        if let tv = context.coordinator.textView, tv.string != text { tv.string = text }
+        let c = context.coordinator
+        c.parent = self
+        guard let tv = c.textView else { return }
+        var changed = false
+        if tv.string != text { tv.string = text; changed = true }
+        if c.seenErrorVersion != errorVersion {
+            c.seenErrorVersion = errorVersion
+            c.errorMessage = error
+            c.errorText = tv.string
+            changed = true
+        }
+        if changed { c.highlight() }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -954,6 +1133,38 @@ struct SQLEditor: NSViewRepresentable {
         private let suggestions = SuggestionPanel()
         private var range = NSRange(location: 0, length: 0)
         private var suppressNext = false
+        var seenErrorVersion = -1
+        var errorMessage: String?
+        var errorText = ""
+
+        /// Szintaxisszínezés és hibajelölés. A futtatási hiba jelölése az első szerkesztésig marad.
+        func highlight() {
+            guard let tv = textView, let storage = tv.textStorage, let layout = tv.layoutManager, !tv.hasMarkedText() else { return }
+            let ns = tv.string as NSString
+            let full = NSRange(location: 0, length: ns.length)
+            let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+            let tokens = SQLSyntax.tokenize(tv.string)
+
+            storage.beginEditing()
+            storage.setAttributes([.font: font, .foregroundColor: NSColor.labelColor], range: full)
+            for t in tokens where t.kind != .error {
+                storage.addAttribute(.foregroundColor, value: SQLSyntax.color(t.kind), range: t.range)
+            }
+            storage.endEditing()
+            tv.typingAttributes = [.font: font, .foregroundColor: NSColor.labelColor]
+
+            layout.removeTemporaryAttribute(.spellingState, forCharacterRange: full)
+            layout.removeTemporaryAttribute(.backgroundColor, forCharacterRange: full)
+            var marks = tokens.filter { $0.kind == .error }.map(\.range)
+            if let message = errorMessage, tv.string == errorText {
+                marks += SQLSyntax.errorRanges(message: message, in: tv.string)
+            }
+            for r in marks where r.location + r.length <= ns.length {
+                layout.addTemporaryAttribute(.spellingState, value: NSAttributedString.SpellingState.spelling.rawValue, forCharacterRange: r)
+                layout.addTemporaryAttribute(.backgroundColor, value: NSColor.systemRed.withAlphaComponent(0.25), forCharacterRange: r)
+            }
+            SQLEditor.markedErrors = marks.filter { $0.location + $0.length <= ns.length }.map { ns.substring(with: $0) }
+        }
 
         init(_ parent: SQLEditor) {
             self.parent = parent
@@ -995,6 +1206,7 @@ struct SQLEditor: NSViewRepresentable {
         func textDidChange(_ note: Notification) {
             guard let tv = textView else { return }
             if parent.text != tv.string { parent.text = tv.string }
+            highlight()
             if suppressNext { suppressNext = false; hide() } else { refresh(tv) }
         }
 
@@ -1489,7 +1701,7 @@ struct QueryView: View {
     var body: some View {
         VSplitView {
             VStack(spacing: 0) {
-                SQLEditor(text: $m.queryText, completions: { m.completions(prefix: $0, qualifier: $1) })
+                SQLEditor(text: $m.queryText, error: m.queryError, errorVersion: m.queryVersion, completions: { m.completions(prefix: $0, qualifier: $1) })
                     .background(Color(nsColor: .textBackgroundColor))
                 Divider()
                 HStack(spacing: 10) {
@@ -1730,8 +1942,20 @@ extension DBModel {
                            && self.queryResults[1].rows.count == 2 }, "Query with multiple results")
             onMain { self.queryText = "UPDATE termekek SET ar = ar + 1"; self.runQuery() }; wait()
             check(onMain { self.queryMessage.contains("rows affected: 2") }, "Modifying query reports rows affected")
-            onMain { self.queryText = "SELEC hiba"; self.runQuery() }; wait()
+            onMain { self.tab = .query; self.queryText = "SELEC hiba"; self.runQuery() }; wait()
             check(onMain { self.queryError?.contains("1064") == true }, "Invalid SQL reports an error")
+            Thread.sleep(forTimeInterval: 0.4)
+            check(onMain { SQLEditor.markedErrors } == ["SELEC"], "Editor marks the syntax error location")
+            onMain { self.queryText = "SELECT nev,\n  nincs_ilyen\nFROM termekek"; self.runQuery() }; wait()
+            Thread.sleep(forTimeInterval: 0.4)
+            check(onMain { SQLEditor.markedErrors } == ["nincs_ilyen"], "Editor marks an unknown column")
+            onMain { self.queryText = "SELECT * FROM termekek"; self.runQuery() }; wait()
+            Thread.sleep(forTimeInterval: 0.4)
+            check(onMain { SQLEditor.markedErrors.isEmpty }, "A successful query clears the error mark")
+            let kinds = SQLSyntax.tokenize("SELECT COUNT(*), 'a' FROM `t` WHERE x = 12 -- note").map(\.kind)
+            check(kinds == [.keyword, .function, .string, .keyword, .identifier, .keyword, .number, .comment], "Syntax highlighting recognises token types")
+            check(SQLSyntax.tokenize("SELECT 'open").last?.kind == .error && SQLSyntax.tokenize("SELECT (1").last?.kind == .error
+                  && SQLSyntax.tokenize("SELECT 1)").last?.kind == .error, "Unclosed quote and unbalanced parentheses are flagged")
 
             let dumpPath = NSTemporaryDirectory() + "szerverpanel-teszt.sql"
             onMain { self.dump(db: db, table: nil, to: dumpPath) }; wait()
@@ -1770,6 +1994,11 @@ extension DBModel {
             onMain { NotificationCenter.default.post(name: SQLEditor.completeTest, object: "cre") }
             Thread.sleep(forTimeInterval: 0.4)
             check(onMain { SQLEditor.shownSuggestions.first } == "create", "Suggestions appear while typing, without Tab")
+            onMain { NotificationCenter.default.post(name: SQLEditor.completeTest, object: nil) }
+            Thread.sleep(forTimeInterval: 0.3)
+            onMain { self.queryText = "-- Products above a price\nSELECT id, nev, COUNT(*) AS db, ROUND(ar, 2)\nFROM `termekek`\nWHERE ar > 1000 AND nev LIKE 'A%'\n  AND nincs_ilyen = 1\nORDER BY ar DESC LIMIT 10"
+                     self.runQuery() }; wait()
+            Thread.sleep(forTimeInterval: 0.5)
             out("PAUSE")
             Thread.sleep(forTimeInterval: 5)
             onMain { self.queryText = "SELECT * FROM termekek;"; self.runQuery(); self.tab = .data; self.loadData() }; wait()
