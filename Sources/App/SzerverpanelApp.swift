@@ -10,14 +10,15 @@ struct SzerverpanelApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var panel = Panel()
     @StateObject private var database = DBModel()
+    @StateObject private var updater = Updater()
 
     var body: some Scene {
         Window("Szerverpanel", id: "main") {
-            ContentView().environmentObject(panel)
+            ContentView().environmentObject(panel).environmentObject(updater)
         }
         .defaultSize(width: 860, height: 560)
         .windowResizability(.contentMinSize)
-        .commands { AppCommands(panel: panel, db: database) }
+        .commands { AppCommands(panel: panel, db: database, updater: updater) }
 
         Window("Database Manager", id: "db") {
             DatabaseWindow().environmentObject(database)

@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "${0:A:h}"
 
-./build.sh
+./build.sh --no-install
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" build/Szerverpanel.app/Contents/Info.plist)
 DMG="build/Szerverpanel-$VERSION.dmg"
 STAGE=build/dmg

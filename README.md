@@ -12,6 +12,7 @@ with a built-in database manager. Written in SwiftUI, runs natively on Apple Sil
 - **Table structure:** table designer, add, change and reorder columns, indexes and primary keys, foreign keys,
   rename, move and copy tables, change engine and collation, optimize / repair / analyze / check.
 - **SQL editor:** syntax highlighting, suggestions while you type, error marking after a failed query.
+- **Updates:** the app checks GitHub for a newer release and updates itself with one click.
 - Every command is also available from the menu bar.
 
 ## Requirements

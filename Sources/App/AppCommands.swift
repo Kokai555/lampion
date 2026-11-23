@@ -5,10 +5,15 @@ import AppKit
 struct AppCommands: Commands {
     @ObservedObject var panel: Panel
     @ObservedObject var db: DBModel
+    @ObservedObject var updater: Updater
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { updater.check(userInitiated: true) }
+                .disabled(updater.state == .checking)
+        }
 
         CommandMenu("Server") {
             Button("Start All") { panel.startAll() }.keyboardShortcut("i", modifiers: [.command, .shift])

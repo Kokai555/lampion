@@ -39,6 +39,14 @@ extension Panel {
                 check(syntax.status == 0, "Apache accepts the configuration Setup writes")
                 try? FileManager.default.removeItem(atPath: tmp)
             }
+            check(Updater.isNewer("1.10", than: "1.9") && Updater.isNewer("v2.0", than: "1.9.9") && !Updater.isNewer("1.3", than: "1.3")
+                  && !Updater.isNewer("1.2", than: "1.3") && Updater.isNewer("1.3.1", than: "1.3"), "Updater compares version numbers correctly")
+            let sample = Data("""
+                {"tag_name":"v9.9","html_url":"https://example.com/r","assets":[{"name":"notes.txt","browser_download_url":"https://example.com/n"},
+                {"name":"Szerverpanel-9.9.dmg","browser_download_url":"https://example.com/a.dmg","digest":"sha256:abc123"}]}
+                """.utf8)
+            check(Updater.parseRelease(sample) == Updater.Release(version: "9.9", page: "https://example.com/r", dmgURL: "https://example.com/a.dmg", sha256: "abc123")
+                  && Updater.parseRelease(Data("{}".utf8)) == nil, "Updater reads the release and its disk image from GitHub's answer")
             let pma = Setup.configuredPhpMyAdmin("$cfg['blowfish_secret'] = '';")
             check(pma.range(of: "sodium_hex2bin\\('[0-9a-f]{64}'\\)", options: .regularExpression) != nil, "Setup generates a 32-byte phpMyAdmin secret")
             check(onMain { self.setupState == .ready }, "No setup banner when everything is installed")
