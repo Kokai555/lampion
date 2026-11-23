@@ -42,6 +42,24 @@ This builds the app and installs it to `/Applications/Szerverpanel.app`.
 
 To create the disk image, run `./package.sh`; it writes `build/Szerverpanel-<version>.dmg`.
 
+## Project layout
+
+```
+Sources/
+├── App/                 app entry point and menu bar commands
+├── Core/                Homebrew paths, process runner, small helpers
+├── Servers/             server control: state, start/stop logic, self-test
+│   └── Views/           main window: module table, status badge, event log
+└── Database/
+    ├── Engine/          talks to MariaDB through the `mariadb` client, parses results
+    ├── Model/           database manager state, completion data, self-test
+    ├── Editor/          SQL editor: syntax highlighting, suggestions, error marking
+    └── Views/           database window: sidebar, data grid, structure, query, sheets
+Tools/                   app icon generator
+build.sh                 build and install
+package.sh               build the disk image
+```
+
 ## Self-tests
 
 ```sh
