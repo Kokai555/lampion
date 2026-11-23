@@ -35,5 +35,10 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 EOF
 
 codesign --force --sign - "$APP"
-ditto "$APP" /Applications/Szerverpanel.app
-echo "Installed: /Applications/Szerverpanel.app"
+# Pass --no-install to only build into build/ (used for testing next to a running copy).
+if [[ "${1:-}" == "--no-install" ]]; then
+  echo "Built: $APP"
+else
+  ditto "$APP" /Applications/Szerverpanel.app
+  echo "Installed: /Applications/Szerverpanel.app"
+fi

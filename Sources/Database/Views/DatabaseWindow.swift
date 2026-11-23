@@ -59,7 +59,11 @@ struct DatabaseWindow: View {
             switch sheet {
             case .newDatabase: NewDatabaseSheet()
             case .newTable: NewTableSheet()
-            case .addColumn: AddColumnSheet()
+            case .addColumn: ColumnSheet(editing: nil)
+            case .editColumn: ColumnSheet(editing: m.selectedColumns.first.flatMap { $0 < m.columns.count ? m.columns[$0] : nil })
+            case .addIndex: IndexSheet()
+            case .addForeignKey: ForeignKeySheet()
+            case .tableOptions: TableOptionsSheet()
             case .insertRow: InsertRowSheet()
             }
         }

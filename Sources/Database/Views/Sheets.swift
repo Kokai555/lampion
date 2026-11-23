@@ -6,6 +6,7 @@ struct SheetFrame<Content: View>: View {
     let confirm: String
     let canConfirm: Bool
     let action: () -> Void
+    var width: CGFloat = 440
     @ViewBuilder var content: Content
     @Environment(\.dismiss) private var dismiss
 
@@ -20,7 +21,7 @@ struct SheetFrame<Content: View>: View {
             }
         }
         .padding(20)
-        .frame(width: 440)
+        .frame(width: width)
     }
 }
 
@@ -39,46 +40,6 @@ struct NewDatabaseSheet: View {
                         Text($0)
                     }
                 }
-            }
-        }
-    }
-}
-
-struct NewTableSheet: View {
-    @EnvironmentObject var m: DBModel
-    @State private var name = ""
-
-    var body: some View {
-        SheetFrame(title: "New Table – \(m.currentDB ?? "")", confirm: "Create", canConfirm: !name.trimmed.isEmpty,
-                   action: { if let d = m.currentDB { m.createTable(name.trimmed, in: d) } }) {
-            Form { TextField("Name", text: $name) }
-            Text("The table is created with an auto-increment “id” primary key. Add the other columns on the Structure tab.")
-                .font(.callout).foregroundStyle(.secondary)
-        }
-    }
-}
-
-struct AddColumnSheet: View {
-    @EnvironmentObject var m: DBModel
-    @State private var name = ""
-    @State private var type = "VARCHAR(255)"
-    @State private var nullable = true
-    @State private var defaultValue = ""
-    private let presets = ["INT", "BIGINT", "TINYINT(1)", "DECIMAL(10,2)", "FLOAT", "VARCHAR(255)", "TEXT", "LONGTEXT",
-                           "DATE", "DATETIME", "TIMESTAMP", "JSON"]
-
-    var body: some View {
-        SheetFrame(title: "Add Column – \(m.currentTable ?? "")", confirm: "Add",
-                   canConfirm: !name.trimmed.isEmpty && !type.trimmed.isEmpty,
-                   action: { m.addColumn(name: name.trimmed, type: type.trimmed, nullable: nullable, defaultValue: defaultValue) }) {
-            Form {
-                TextField("Name", text: $name)
-                HStack {
-                    TextField("Type", text: $type)
-                    Menu("Common") { ForEach(presets, id: \.self) { p in Button(p) { type = p } } }.fixedSize()
-                }
-                Toggle("Allow NULL", isOn: $nullable)
-                TextField("Default", text: $defaultValue, prompt: Text("none"))
             }
         }
     }

@@ -7,8 +7,11 @@ with a built-in database manager. Written in SwiftUI, runs natively on Apple Sil
 
 - **Servers:** start and stop Apache and MariaDB, see PIDs and ports, detect port conflicts,
   open config files and logs, event log.
-- **Database manager:** database and table tree, editable data grid (filter, sort, paging),
-  table structure, SQL editor with Tab completion, export to and import from SQL files.
+- **Database manager:** database and table tree, editable data grid (filter, sort, paging), export to and
+  import from SQL files.
+- **Table structure:** table designer, add, change and reorder columns, indexes and primary keys, foreign keys,
+  rename, move and copy tables, change engine and collation, optimize / repair / analyze / check.
+- **SQL editor:** syntax highlighting, suggestions while you type, error marking after a failed query.
 - Every command is also available from the menu bar.
 
 ## Requirements

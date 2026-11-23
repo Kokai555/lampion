@@ -18,7 +18,7 @@ extension DBModel {
             var idle = 0
             for _ in 0..<200 {
                 idle = onMain({ self.busyCount == 0 }) ? idle + 1 : 0
-                if idle >= 3 { return }
+                if idle >= 5 { return }
                 Thread.sleep(forTimeInterval: 0.1)
             }
         }
@@ -135,10 +135,92 @@ extension DBModel {
             check(onMain { self.data.rows.isEmpty }, "Empty table")
             onMain { self.dropTable("termekek", in: db) }; wait()
             check(onMain { self.tables[db]?.isEmpty == true }, "Delete table")
+
+            // Structure: designer, column changes, indexes, foreign keys, table operations.
+            func column(_ name: String) -> ColumnInfo? { onMain { self.columns.first { $0.name == name } } }
+            onMain { self.selection = .database(db) }
+            Thread.sleep(forTimeInterval: 0.3)
+            onMain { self.createTable(name: "vevok", in: db, columns: [
+                ColumnDraft(name: "id", type: "INT UNSIGNED", nullable: false, autoIncrement: true, primaryKey: true),
+                ColumnDraft(name: "nev", type: "VARCHAR(50)", nullable: false),
+                ColumnDraft(name: "email", type: "VARCHAR(100)"),
+                ColumnDraft(name: "letrehozva", type: "DATETIME", nullable: false, defaultText: "CURRENT_TIMESTAMP"),
+            ], engine: "InnoDB", collation: "utf8mb4_hungarian_ci") }; wait()
+            check(onMain { self.selection == .table(db, "vevok") && self.columns.map(\.name) == ["id", "nev", "email", "letrehozva"] }
+                  && column("id")?.key == "PRI" && column("id")?.extra.contains("auto_increment") == true
+                  && column("letrehozva")?.def?.lowercased().hasPrefix("current_timestamp") == true
+                  && onMain({ self.currentTableInfo?.collation }) == "utf8mb4_hungarian_ci", "Table designer creates a table with all its columns")
+
+            var draft = ColumnDraft(column("nev")!)
+            draft.name = "teljes_nev"; draft.type = "VARCHAR(120)"; draft.defaultText = "ismeretlen"; draft.comment = "Customer's name"
+            onMain { self.saveColumn(draft, replacing: "nev", position: .after("email")) }; wait()
+            check(onMain { self.columns.map(\.name) == ["id", "email", "teljes_nev", "letrehozva"] }
+                  && column("teljes_nev")?.type == "varchar(120)" && column("teljes_nev")?.def == "ismeretlen"
+                  && column("teljes_nev")?.null == "NO" && column("teljes_nev")?.comment == "Customer's name", "Edit column: rename, type, default, comment, position")
+
+            let before = onMain { self.columns.map { "\($0.name)|\($0.type)|\($0.null)|\($0.def ?? "nil")|\($0.extra)|\($0.comment)" } }
+            for name in ["id", "email", "teljes_nev", "letrehozva"] {
+                let same = ColumnDraft(column(name)!)
+                onMain { self.saveColumn(same, replacing: name) }; wait()
+            }
+            let after = onMain { self.columns.map { "\($0.name)|\($0.type)|\($0.null)|\($0.def ?? "nil")|\($0.extra)|\($0.comment)" } }
+            check(before == after && onMain({ self.alertMessage == nil }), "Saving a column unchanged keeps it exactly as it was")
+
+            onMain { self.saveColumn(ColumnDraft(name: "aktiv", type: "TINYINT(1)", nullable: false, defaultText: "1"), replacing: nil, position: .first) }; wait()
+            check(onMain { self.columns.first?.name == "aktiv" } && column("aktiv")?.def == "1", "Add column at a chosen position")
+
+            onMain { self.addIndex(name: "uq_email", kind: .unique, columns: ["email"]) }; wait()
+            onMain { self.addIndex(name: "", kind: .index, columns: ["teljes_nev", "email"]) }; wait()
+            check(onMain { self.indexList.contains { $0.name == "uq_email" && $0.unique && $0.columns == ["email"] }
+                           && self.indexList.contains { !$0.unique && $0.columns == ["teljes_nev", "email"] }
+                           && self.indexList.contains { $0.isPrimary && $0.columns == ["id"] } }, "Add unique and multi-column indexes")
+            onMain { self.dropIndex("uq_email") }; wait()
+            check(onMain { !self.indexList.contains { $0.name == "uq_email" } && self.indexList.count == 2 }, "Delete index")
+
+            onMain { self.selection = .database(db) }
+            Thread.sleep(forTimeInterval: 0.3)
+            onMain { self.createTable(name: "rendelesek", in: db, columns: [
+                ColumnDraft(name: "id", type: "INT UNSIGNED", nullable: false, autoIncrement: true, primaryKey: true),
+                ColumnDraft(name: "vevo_id", type: "INT UNSIGNED", nullable: false),
+            ], engine: "InnoDB", collation: "utf8mb4_general_ci") }; wait()
+            onMain { self.addForeignKey(name: "fk_vevo", column: "vevo_id", refTable: "vevok", refColumn: "id", onDelete: "CASCADE", onUpdate: "RESTRICT") }; wait()
+            check(onMain { self.foreignKeys == [ForeignKeyInfo(name: "fk_vevo", column: "vevo_id", refSchema: db, refTable: "vevok",
+                                                               refColumn: "id", updateRule: "RESTRICT", deleteRule: "CASCADE")] }, "Add foreign key")
+            onMain { self.queryText = "INSERT INTO rendelesek (vevo_id) VALUES (999)"; self.runQuery() }; wait()
+            check(onMain { self.queryError?.contains("foreign key constraint fails") == true }, "The foreign key is enforced by the server")
+            onMain { self.dropForeignKey("fk_vevo") }; wait()
+            check(onMain { self.foreignKeys.isEmpty && self.alertMessage == nil }, "Delete foreign key")
+
+            onMain { self.setTableOptions(engine: "MyISAM", collation: "utf8mb4_hungarian_ci") }; wait()
+            check(onMain { self.currentTableInfo?.engine == "MyISAM" && self.currentTableInfo?.collation == "utf8mb4_hungarian_ci" }, "Change engine and collation")
+            onMain { self.infoMessage = nil; self.maintenance("OPTIMIZE") }; wait()
+            check(onMain { self.infoMessage?.contains("Optimize finished") == true }, "Maintenance reports the server's answer")
+            onMain { self.infoMessage = nil; self.queryText = "INSERT INTO rendelesek (vevo_id) VALUES (1), (2)"; self.runQuery() }; wait()
+            onMain { self.copyTable(to: "rendelesek_masolat", withData: true) }; wait()
+            let copied = DBClient.run("SELECT COUNT(*) FROM `\(db)`.`rendelesek_masolat`").sets.first?.rows.first?.first ?? nil
+            check(copied == "2" && onMain({ self.tables[db]?.contains { $0.name == "rendelesek_masolat" } == true }), "Copy table with data")
+            onMain { self.infoMessage = nil; self.renameTable(to: "megrendelesek", database: db) }; wait()
+            check(onMain { self.selection == .table(db, "megrendelesek") && self.tables[db]?.contains { $0.name == "rendelesek" } == false
+                           && self.columns.map(\.name) == ["id", "vevo_id"] }, "Rename table")
+            check(onMain { self.tab == .structure }, "The table designer leaves you on the Structure tab")
+            onMain { self.selection = .table(db, "vevok"); self.structureSection = .columns }; wait()
+            check(onMain { self.tab == .structure }, "Switching tables keeps the Structure tab")
+            if CommandLine.arguments.contains("--screenshots") {
+                out("PAUSE2"); Thread.sleep(forTimeInterval: 4)
+                onMain { self.sheet = .newTable }
+                Thread.sleep(forTimeInterval: 1.5); out("PAUSE3"); Thread.sleep(forTimeInterval: 4)
+                onMain { self.sheet = nil }
+                Thread.sleep(forTimeInterval: 1)
+                onMain { self.sheet = .tableOptions }
+                Thread.sleep(forTimeInterval: 1.5); out("PAUSE4"); Thread.sleep(forTimeInterval: 4)
+                onMain { self.sheet = nil }
+                Thread.sleep(forTimeInterval: 1)
+            }
+            check(onMain { self.alertMessage == nil }, "Structure operations left no error")
             onMain { self.expanded.remove(db); self.selection = .database(db) }
             Thread.sleep(forTimeInterval: 0.3)
             onMain { self.tab = .query; self.queryText = "CREATE TABLE diak (om CHAR(10) PRIMARY KEY, nev VARCHAR(100) NOT NULL)"; self.runQuery() }; wait()
-            check(onMain { self.tables[db]?.map(\.name) == ["diak"] }, "A table created by a query shows up in a collapsed database")
+            check(onMain { self.tables[db]?.contains { $0.name == "diak" } == true }, "A table created by a query shows up in a collapsed database")
             onMain { self.dropDatabase(db) }; wait()
             check(onMain { !self.databases.contains(db) }, "Delete database")
             check(onMain { self.alertMessage == nil }, "No unexpected error message left")

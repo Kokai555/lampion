@@ -35,7 +35,7 @@ struct ConfirmRequest {
 }
 
 enum DBSheet: String, Identifiable {
-    case newDatabase, newTable, addColumn, insertRow
+    case newDatabase, newTable, addColumn, editColumn, insertRow, addIndex, addForeignKey, tableOptions
     var id: String { rawValue }
 }
 

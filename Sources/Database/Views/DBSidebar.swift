@@ -37,6 +37,12 @@ struct DBSidebar: View {
                                                                    button: "Empty") { m.truncateTable(t.name, in: db) }
                                     }
                                 }
+                                if !t.isView {
+                                    Button("Table Options…") {
+                                        m.selection = .table(db, t.name)
+                                        m.sheet = .tableOptions
+                                    }
+                                }
                                 Button("Delete…") {
                                     m.confirm = ConfirmRequest(title: "Delete the table “\(t.name)”?",
                                                                message: "The table and all its data will be permanently deleted.",

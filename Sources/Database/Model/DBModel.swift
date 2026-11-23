@@ -25,6 +25,11 @@ final class DBModel: ObservableObject {
     @Published var dataError: String?
     @Published var selectedRows = IndexSet()
     @Published var selectedColumns = IndexSet()
+    @Published var foreignKeys: [ForeignKeyInfo] = []
+    @Published var selectedIndexes = IndexSet()
+    @Published var selectedForeignKeys = IndexSet()
+    @Published var structureSection: StructureSection = .columns
+    @Published var infoMessage: String?
     @Published var filter = ""
     @Published var orderBy: String?
     @Published var ascending = true
@@ -64,7 +69,7 @@ final class DBModel: ObservableObject {
         return tables[d]?.first { $0.name == t }
     }
 
-    private var fq: String? {
+    var fq: String? {
         guard case .table(let d, let t) = selection else { return nil }
         return SQL.id(d) + "." + SQL.id(t)
     }
@@ -84,7 +89,7 @@ final class DBModel: ObservableObject {
         if sqlLog.count > 300 { sqlLog.removeFirst(sqlLog.count - 300) }
     }
 
-    private func exec(_ sql: String, db: String? = nil, quiet: Bool = false, done: @escaping (ExecResult) -> Void) {
+    func exec(_ sql: String, db: String? = nil, quiet: Bool = false, done: @escaping (ExecResult) -> Void) {
         if !quiet { log(sql) }
         busyCount += 1
         queue.async {
@@ -98,7 +103,7 @@ final class DBModel: ObservableObject {
     }
 
     /// Módosító utasítás: hiba esetén figyelmeztet, utána lefuttatja a `then` blokkot.
-    private func change(_ sql: String, db: String? = nil, then: @escaping (Bool) -> Void) {
+    func change(_ sql: String, db: String? = nil, then: @escaping (Bool) -> Void) {
         exec(sql, db: db) { r in
             if let e = r.error { self.alertMessage = e }
             then(r.error == nil)
@@ -152,11 +157,12 @@ final class DBModel: ObservableObject {
             if tab != .query { tab = .tables }
             loadTables(d)
         case .table(let d, _):
-            if tab != .query { tab = .data }
+            // Stay on Structure or Query when moving between tables; otherwise show the data.
+            if tab != .query && tab != .structure { tab = .data }
             expanded.insert(d)
             if tables[d] == nil { loadTables(d) }
             filter = ""; orderBy = nil; ascending = true; offset = 0; totalRows = nil
-            columns = []; data = ResultSet(); dataError = nil; createSQL = ""; indexes = ResultSet()
+            columns = []; data = ResultSet(); dataError = nil; createSQL = ""; indexes = ResultSet(); foreignKeys = []
             selectedRows = []; selectedColumns = []; dataVersion += 1
             loadTable()
         }
@@ -165,7 +171,10 @@ final class DBModel: ObservableObject {
     // Tábla
     func loadTable(then: (() -> Void)? = nil) {
         guard let fq, let node = selection else { return }
-        exec("SHOW FULL COLUMNS FROM \(fq); SHOW INDEX FROM \(fq); SHOW CREATE TABLE \(fq);", quiet: true) { r in
+        guard case .table(let tableDB, let tableName) = node else { return }
+        let sql = "SHOW FULL COLUMNS FROM \(fq); SHOW INDEX FROM \(fq); SHOW CREATE TABLE \(fq); "
+            + foreignKeySQL(db: tableDB, table: tableName)
+        exec(sql, quiet: true) { r in
             guard node == self.selection else { return }
             if let e = r.error { self.dataError = e; then?(); return }
             let c = r.sets.first ?? ResultSet()
@@ -178,7 +187,10 @@ final class DBModel: ObservableObject {
             self.indexes = r.sets.count > 1 ? r.sets[1] : ResultSet()
             let create = r.sets.count > 2 ? r.sets[2].rows.first : nil
             self.createSQL = (create?.count ?? 0) > 1 ? (create?[1] ?? "") : ""
+            self.foreignKeys = r.sets.count > 3 ? self.parseForeignKeys(r.sets[3]) : []
             self.selectedColumns = []
+            self.selectedIndexes = []
+            self.selectedForeignKeys = []
             self.loadData(then: then)
         }
     }
